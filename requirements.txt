@@ -1,0 +1,47 @@
+# === Sistema de Facturación Electrónica AFIP ===
+# Python 3.11+  (validado en 3.13)
+#
+# IMPORTANTE — pyafipws NO se instala desde este archivo:
+#   La versión publicada en PyPI ("PyAfipWs") es código Python 2 y no funciona
+#   en Python 3. La versión Python 3 vive en el repositorio de GitHub y sus
+#   dependencias fijadas (Pillow<=9.5.0, cryptography==41, qrcode==6.1) rompen
+#   en Python 3.13. Por eso se instala APARTE y SIN dependencias:
+#
+#       pip install --no-deps git+https://github.com/reingart/pyafipws.git
+#
+#   (sus dependencias de runtime ya están listadas abajo). Ver README, sección 3.
+
+# --- Web framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+jinja2==3.1.5
+python-multipart==0.0.20          # parseo de formularios HTML / uploads
+
+# --- Configuración tipada desde .env ---
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# --- Base de datos (MySQL + ORM) ---
+SQLAlchemy==2.0.36
+PyMySQL==1.1.1                     # driver MySQL puro Python (no requiere compilar)
+cryptography==44.0.0              # PyMySQL (caching_sha2) y firma WSAA de pyafipws
+
+# --- Autenticación web ---
+bcrypt==4.2.1                    # hashing de contraseñas (uso directo, sin passlib)
+itsdangerous==2.2.0             # firma de cookies de sesión (SessionMiddleware)
+
+# --- PDF + QR fiscal ---
+reportlab==4.2.5
+qrcode[pil]==8.0
+
+# --- Dependencias de runtime de pyafipws (versión Python 3) ---
+future                            # provee 'past'/'builtins' usados por utils.py
+pysimplesoap==1.8.22             # cliente SOAP (requiere distutils -> setuptools<74)
+httplib2                         # transporte HTTP del cliente SOAP
+certifi                          # certificados CA para HTTPS
+setuptools<74                    # restituye el shim de 'distutils' en Python 3.12+
+
+# --- Calidad de código (desarrollo) ---
+black==24.10.0
+ruff==0.8.4

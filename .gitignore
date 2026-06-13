@@ -1,0 +1,45 @@
+# =====================================================================
+#  .gitignore — Sistema de Facturación AFIP
+#  IMPORTANTE: nunca versionar credenciales ni certificados.
+# =====================================================================
+
+# --- Secretos y certificados (CRÍTICO) ---
+.env
+certs/
+*.key
+*.crt
+*.csr
+*.pem
+
+# --- Cache del Ticket de Acceso de AFIP ---
+.afip_cache/
+*.xml.tmp
+TA.xml
+
+# --- Salidas generadas ---
+pdfs/
+logs/
+*.log
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Entornos virtuales ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Herramientas / IDE ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.vscode/
+.idea/
+.DS_Store

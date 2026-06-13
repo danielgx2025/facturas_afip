@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Empresas — Facturación AFIP{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Empresas emisoras</h3>
+  <a href="/empresas/nueva" class="btn btn-success">+ Nueva empresa</a>
+</div>
+
+<table class="table table-striped table-hover">
+  <thead>
+    <tr>
+      <th>CUIT</th>
+      <th>Razón social</th>
+      <th>Cond. IVA</th>
+      <th>Puntos de venta</th>
+      <th>Modo</th>
+      <th>Estado</th>
+      <th class="text-end">Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in empresas %}
+    <tr {% if not e.activo %}class="text-muted"{% endif %}>
+      <td>{{ e.cuit }}</td>
+      <td>{{ e.razon_social }}</td>
+      <td>{{ e.condicion_iva }}</td>
+      <td>{% for pv in e.puntos_venta %}{{ "%04d"|format(pv.numero) }} {% endfor %}</td>
+      <td>{{ e.modo }}</td>
+      <td>
+        {% if e.activo %}<span class="badge bg-success">Activa</span>
+        {% else %}<span class="badge bg-secondary">Inactiva</span>{% endif %}
+      </td>
+      <td class="text-end">
+        <a href="/empresas/{{ e.id }}/editar" class="btn btn-sm btn-outline-primary">Editar</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="text-center text-muted">No hay empresas cargadas.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

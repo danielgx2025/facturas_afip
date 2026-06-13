@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Emitir comprobante — Facturación AFIP{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">Emitir comprobante</h3>
+
+<div class="alert alert-{{ 'danger' if is_produccion else 'warning' }}">
+  Modo actual: <strong>{{ modo_afip }}</strong>.
+  {% if not is_produccion %}En homologación los comprobantes NO tienen validez fiscal.{% endif %}
+</div>
+
+<form method="post" action="/facturas">
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">Empresa emisora</label>
+      <select name="empresa_id" class="form-select" required>
+        {% for e in empresas %}
+        <option value="{{ e.id }}">{{ e.razon_social }} (CUIT {{ e.cuit }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Punto de venta</label>
+      <input type="number" name="punto_venta" class="form-control" value="1" min="1" required />
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Tipo de comprobante</label>
+      <select name="tipo_cbte" class="form-select" required>
+        {% for codigo, nombre in tipos.items() %}
+        <option value="{{ codigo }}">{{ nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Concepto</label>
+      <select name="concepto" class="form-select">
+        <option value="1" selected>Productos</option>
+        <option value="2">Servicios</option>
+        <option value="3">Productos y Servicios</option>
+      </select>
+    </div>
+
+    <div class="col-md-6">
+      <label class="form-label">Cliente / Receptor</label>
+      <select name="cliente_id" class="form-select" required>
+        {% for c in clientes %}
+        <option value="{{ c.id }}">{{ c.razon_social }} — {{ c.nro_doc }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">
+        Comprobante asociado <small class="text-muted">(solo notas de crédito/débito)</small>
+      </label>
+      <select name="cbte_asociado_id" class="form-select">
+        <option value="">— Ninguno —</option>
+        {% for a in asociables %}
+        <option value="{{ a.id }}" data-cliente="{{ a.cliente_id }}">
+          {{ tipos.get(a.tipo_cbte, a.tipo_cbte) }}
+          {{ "%04d"|format(a.punto_venta) }}-{{ "%08d"|format(a.numero) }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <hr class="my-4" />
+  <h5>Detalle</h5>
+  <table class="table" id="items-table">
+    <thead>
+      <tr>
+        <th style="width:50%">Producto</th>
+        <th style="width:25%">Precio neto</th>
+        <th style="width:25%">Cantidad</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for _ in range(3) %}
+      <tr>
+        <td>
+          <select name="item_producto_id" class="form-select">
+            <option value="0" data-precio="0">— Sin producto —</option>
+            {% for p in productos %}
+            <option value="{{ p.id }}" data-precio="{{ p.precio_unitario }}">
+              {{ p.descripcion }} (${{ p.precio_unitario }} + {{ p.alicuota_iva }}% IVA)
+            </option>
+            {% endfor %}
+          </select>
+        </td>
+        <td>
+          <input type="number" step="0.01" name="item_precio" class="form-control" value="0" min="0" />
+        </td>
+        <td>
+          <input type="number" step="0.01" name="item_cantidad" class="form-control" value="0" min="0" />
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <button type="button" class="btn btn-outline-secondary btn-sm" id="add-row">+ Agregar línea</button>
+
+  <div class="mt-4">
+    <button type="submit" class="btn btn-primary">Emitir y solicitar CAE</button>
+    <a href="/facturas" class="btn btn-outline-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const tbodyItems = document.querySelector("#items-table tbody");
+
+  // Al elegir un producto, precarga su precio neto en la fila (queda editable).
+  // Delegación en el tbody: funciona también para las filas agregadas después.
+  tbodyItems.addEventListener("change", function (e) {
+    const select = e.target.closest('select[name="item_producto_id"]');
+    if (!select) return;
+    const precio = select.selectedOptions[0].dataset.precio || "0";
+    select.closest("tr").querySelector('input[name="item_precio"]').value = precio;
+  });
+
+  // El comprobante asociado debe ser una factura del cliente seleccionado:
+  // se ocultan (y deshabilitan, por los navegadores que ignoran hidden en
+  // <option>) las facturas de otros clientes.
+  const selectCliente = document.querySelector('select[name="cliente_id"]');
+  const selectAsociado = document.querySelector('select[name="cbte_asociado_id"]');
+
+  function filtrarAsociables() {
+    const clienteId = selectCliente.value;
+    for (const opcion of selectAsociado.options) {
+      if (!opcion.dataset.cliente) continue; // "— Ninguno —" queda siempre.
+      const deOtroCliente = opcion.dataset.cliente !== clienteId;
+      opcion.hidden = deOtroCliente;
+      opcion.disabled = deOtroCliente;
+    }
+    if (selectAsociado.selectedOptions[0]?.hidden) selectAsociado.value = "";
+  }
+
+  selectCliente.addEventListener("change", filtrarAsociables);
+  filtrarAsociables();
+
+  // El comprobante asociado solo aplica a notas de crédito/débito: para el
+  // resto de los tipos queda deshabilitado (y un select disabled no viaja
+  // en el POST; el router ya tolera el campo ausente).
+  const tiposConAsociado = {{ tipos_con_asociado | tojson }};
+  const selectTipo = document.querySelector('select[name="tipo_cbte"]');
+
+  function actualizarAsociado() {
+    const habilitado = tiposConAsociado.includes(parseInt(selectTipo.value, 10));
+    selectAsociado.disabled = !habilitado;
+    if (!habilitado) selectAsociado.value = "";
+  }
+
+  selectTipo.addEventListener("change", actualizarAsociado);
+  actualizarAsociado();
+
+  // Clona la última fila de detalle para agregar más líneas.
+  document.getElementById("add-row").addEventListener("click", function () {
+    const nueva = tbodyItems.rows[tbodyItems.rows.length - 1].cloneNode(true);
+    nueva.querySelector("select").value = "0";
+    nueva.querySelectorAll("input").forEach((inp) => (inp.value = "0"));
+    tbodyItems.appendChild(nueva);
+  });
+</script>
+{% endblock %}

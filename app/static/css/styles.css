@@ -1,0 +1,17 @@
+/* Estilos propios del sistema (complementan a Bootstrap). */
+
+body {
+  background-color: #f5f6f8;
+}
+
+.navbar-brand {
+  font-weight: 600;
+}
+
+.card {
+  border: none;
+}
+
+.table thead th {
+  white-space: nowrap;
+}

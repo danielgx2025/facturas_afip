@@ -1,0 +1,38 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        APP_UID: "1000"        # debe coincidir con el dueño de las carpetas del host
+    image: facturas-afip:latest
+    container_name: facturas-afip
+    restart: unless-stopped
+    env_file: .env             # DB_*, AFIP_MODO, SECRET_KEY, ADMIN_*, etc.
+    environment:
+      TZ: America/Argentina/Buenos_Aires
+      UVICORN_WORKERS: "2"
+    # El TLS lo termina un proxy/LB externo. Si el proxy corre en el MISMO host,
+    # 127.0.0.1 evita exponer la app a la red. Si el proxy es otro contenedor,
+    # usar una red compartida (ver nota abajo) en vez de publicar el puerto.
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./certs:/app/certs           # PEM .crt/.key (secretos) + .p12 para registrar
+      - ./pdfs:/app/pdfs             # comprobantes generados (retención fiscal)
+      - ./logs:/app/logs
+      - ./afip_cache:/app/.afip_cache
+    extra_hosts:
+      # Permite DB_HOST=host.docker.internal si la base externa vive en el host Docker
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

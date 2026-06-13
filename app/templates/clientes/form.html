@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% set c = cliente if cliente is defined else none %}
+{% block title %}{{ "Editar" if c else "Nuevo" }} cliente — Facturación AFIP{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">{{ "Editar cliente" if c else "Nuevo cliente" }}</h3>
+
+<form method="post" action="{{ '/clientes/' ~ c.id if c else '/clientes' }}" class="row g-3">
+  <div class="col-md-6">
+    <label class="form-label">Empresa</label>
+    {# En edición la empresa no se cambia: el cliente pertenece a su empresa. #}
+    <select name="empresa_id" id="empresa_id" class="form-select" {{ "disabled" if c else "required" }}>
+      {% for e in empresas %}
+      <option value="{{ e.id }}" {{ "selected" if c and c.empresa_id == e.id else "" }}>
+        {{ e.razon_social }} (CUIT {{ e.cuit }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Razón social</label>
+    <input type="text" name="razon_social" id="razon_social" class="form-control"
+           value="{{ c.razon_social if c else '' }}" required />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Tipo de documento</label>
+    <select name="tipo_doc" id="tipo_doc" class="form-select">
+      {% set tipo_actual = c.tipo_doc if c else 99 %}
+      <option value="80" {{ "selected" if tipo_actual == 80 else "" }}>CUIT (80)</option>
+      <option value="86" {{ "selected" if tipo_actual == 86 else "" }}>CUIL (86)</option>
+      <option value="96" {{ "selected" if tipo_actual == 96 else "" }}>DNI (96)</option>
+      <option value="99" {{ "selected" if tipo_actual == 99 else "" }}>Consumidor Final (99)</option>
+    </select>
+  </div>
+  <div class="col-md-5">
+    <label class="form-label">Número de documento</label>
+    <div class="input-group">
+      <input type="text" name="nro_doc" id="nro_doc" class="form-control"
+             value="{{ c.nro_doc if c else '0' }}" />
+      <button type="button" id="btn-consultar-afip" class="btn btn-outline-primary">
+        🔍 Consultar AFIP
+      </button>
+    </div>
+    <div class="form-text">
+      Con un CUIT, trae razón social, condición IVA y domicilio del padrón de AFIP.
+    </div>
+  </div>
+  <div class="col-md-4 d-flex align-items-end">
+    <div id="afip-feedback" class="w-100"></div>
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Condición IVA</label>
+    <select name="condicion_iva" id="condicion_iva" class="form-select">
+      {% set cond_actual = c.condicion_iva if c else "Consumidor Final" %}
+      {% for cond in ["Consumidor Final", "Responsable Inscripto", "Monotributo", "Exento"] %}
+      <option {{ "selected" if cond_actual == cond else "" }}>{{ cond }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-8">
+    <label class="form-label">Domicilio</label>
+    <input type="text" name="domicilio" id="domicilio" class="form-control"
+           value="{{ c.domicilio if c else '' }}" />
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Email</label>
+    <input type="email" name="email" class="form-control" value="{{ c.email if c else '' }}" />
+  </div>
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">
+      {{ "Guardar cambios" if c else "Guardar cliente" }}
+    </button>
+    <a href="/clientes" class="btn btn-outline-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    const btn = document.getElementById("btn-consultar-afip");
+    const feedback = document.getElementById("afip-feedback");
+
+    function aviso(mensaje, tipo) {
+      feedback.innerHTML =
+        '<div class="alert alert-' + tipo + ' py-1 px-2 mb-0 small">' +
+        mensaje + "</div>";
+    }
+
+    function setSelect(select, valor) {
+      // Selecciona la opción cuyo texto coincide con `valor` (ignorando may/min).
+      const objetivo = (valor || "").trim().toLowerCase();
+      for (const opt of select.options) {
+        if (opt.text.trim().toLowerCase() === objetivo) {
+          select.value = opt.value || opt.text;
+          return;
+        }
+      }
+    }
+
+    btn.addEventListener("click", async function () {
+      // En edición el select está deshabilitado pero su value sigue legible.
+      const empresaId = document.getElementById("empresa_id").value;
+      const cuit = (document.getElementById("nro_doc").value || "").replace(/\D/g, "");
+
+      if (!empresaId) {
+        aviso("Elegí una empresa emisora primero.", "warning");
+        return;
+      }
+      if (cuit.length !== 11) {
+        aviso("Ingresá un CUIT de 11 dígitos para consultar AFIP.", "warning");
+        return;
+      }
+
+      btn.disabled = true;
+      aviso("Consultando AFIP…", "info");
+      try {
+        const url =
+          "/clientes/consultar-afip?empresa_id=" +
+          encodeURIComponent(empresaId) +
+          "&cuit=" +
+          encodeURIComponent(cuit);
+        const resp = await fetch(url, { headers: { Accept: "application/json" } });
+        const data = await resp.json();
+
+        if (!data.ok) {
+          aviso(data.error || "No se pudieron obtener los datos.", "danger");
+          return;
+        }
+
+        document.getElementById("tipo_doc").value = String(data.tipo_doc);
+        document.getElementById("nro_doc").value = data.nro_doc;
+        document.getElementById("razon_social").value = data.razon_social || "";
+        document.getElementById("domicilio").value = data.domicilio || "";
+        setSelect(document.getElementById("condicion_iva"), data.condicion_iva);
+
+        const estado = data.estado ? " (" + data.estado + ")" : "";
+        aviso("Datos cargados desde AFIP" + estado + ". Revisá antes de guardar.", "success");
+      } catch (err) {
+        aviso("Error de red al consultar AFIP.", "danger");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  })();
+</script>
+{% endblock %}

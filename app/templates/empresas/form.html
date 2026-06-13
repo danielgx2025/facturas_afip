@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% set e = empresa if empresa is defined else none %}
+{% block title %}{{ "Editar" if e else "Nueva" }} empresa — Facturación AFIP{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">{{ "Editar empresa emisora" if e else "Nueva empresa emisora" }}</h3>
+
+{% if not e %}
+<div class="alert alert-info">
+  Subí el certificado <code>.crt</code> y la clave privada <code>.key</code> que
+  generaste en AFIP. Se guardan en la carpeta <code>certs/</code> (fuera del
+  control de versiones). Ver la guía en el README.
+</div>
+{% endif %}
+
+<form method="post" action="{{ '/empresas/' ~ e.id if e else '/empresas' }}"
+      enctype="multipart/form-data" class="row g-3">
+  <div class="col-md-4">
+    <label class="form-label">CUIT (solo dígitos)</label>
+    <input type="text" name="cuit" class="form-control" required pattern="\d{11}"
+           value="{{ e.cuit if e else '' }}" />
+  </div>
+  <div class="col-md-8">
+    <label class="form-label">Razón social</label>
+    <input type="text" name="razon_social" class="form-control" required
+           value="{{ e.razon_social if e else '' }}" />
+  </div>
+  <div class="col-md-8">
+    <label class="form-label">Domicilio</label>
+    <input type="text" name="domicilio" class="form-control"
+           value="{{ e.domicilio if e else '' }}" />
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Condición IVA</label>
+    <select name="condicion_iva" class="form-select">
+      {% set cond_actual = e.condicion_iva if e else "Responsable Inscripto" %}
+      {% for cond in ["Responsable Inscripto", "Monotributo", "Exento"] %}
+      <option {{ "selected" if cond_actual == cond else "" }}>{{ cond }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Ingresos Brutos</label>
+    <input type="text" name="ingresos_brutos" class="form-control"
+           value="{{ e.ingresos_brutos if e else '' }}" placeholder="Ej.: 901-123456-7 o Exento" />
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Inicio de actividades</label>
+    <input type="date" name="inicio_actividades" class="form-control"
+           value="{{ e.inicio_actividades if e else '' }}" />
+  </div>
+  {% if not e %}
+  <div class="col-md-4">
+    <label class="form-label">Punto de venta</label>
+    <input type="number" name="punto_venta" class="form-control" value="1" min="1" required />
+  </div>
+  {% endif %}
+  <div class="col-md-6">
+    <label class="form-label">Certificado (.crt)</label>
+    <input type="file" name="cert" class="form-control" accept=".crt,.pem" {{ "" if e else "required" }} />
+    {% if e %}
+    <div class="form-text">Dejar vacío para conservar el actual (<code>{{ e.cert_path }}</code>).</div>
+    {% endif %}
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Clave privada (.key)</label>
+    <input type="file" name="key" class="form-control" accept=".key,.pem" {{ "" if e else "required" }} />
+    {% if e %}
+    <div class="form-text">Dejar vacío para conservar la actual (<code>{{ e.key_path }}</code>).</div>
+    {% endif %}
+  </div>
+  {% if e %}
+  <div class="col-12">
+    <div class="form-check">
+      <input type="checkbox" name="activo" value="true" class="form-check-input"
+             id="check-activo" {{ "checked" if e.activo else "" }} />
+      <label class="form-check-label" for="check-activo">Activa</label>
+    </div>
+    <div class="form-text">Las empresas inactivas no aparecen al emitir comprobantes.</div>
+  </div>
+  {% endif %}
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">
+      {{ "Guardar cambios" if e else "Guardar empresa" }}
+    </button>
+    <a href="/empresas" class="btn btn-outline-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
