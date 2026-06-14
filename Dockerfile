@@ -29,7 +29,7 @@ FROM python:${PYTHON_VERSION} AS runtime
 ARG APP_UID=1000
 
 # tzdata para fecha local Argentina (AFIP). git ya NO se necesita en runtime.
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata gosu \
     && rm -rf /var/lib/apt/lists/*
 
 ENV VIRTUAL_ENV=/opt/venv \
@@ -52,6 +52,5 @@ RUN sed -i 's/\r$//' docker-entrypoint.sh \
     && mkdir -p certs pdfs logs .afip_cache \
     && chown -R app:app /app
 
-USER app
 EXPOSE 8000
 ENTRYPOINT ["./docker-entrypoint.sh"]
