@@ -68,6 +68,35 @@ ya creada hay que ejecutar un `ALTER TABLE` one-off (script temporal con
 `app.database.engine` + `sqlalchemy.text`, idempotente verificando
 `SHOW COLUMNS`). Así se agregó `clientes.fecha_baja`.
 
+## Despliegue (Docker, producción)
+
+`Dockerfile` + `docker-compose.yml` + `docker-entrypoint.sh` corren la app contra
+una **MySQL externa** (no hay servicio de DB en el compose). Lo no obvio:
+
+- **Dos plantillas de entorno:** `.env.example` (dev) y `.env.production.example`
+  (Docker). Se copia la que corresponda a **`.env`**; compose lo inyecta vía
+  `env_file` y **NO se hornea en la imagen** (está en `.dockerignore`).
+- **Build multi-stage:** el *builder* instala `requirements.txt` + `pyafipws`
+  desde GitHub (por eso necesita `git`); el *runtime* solo copia el venv y agrega
+  `tzdata` (la lógica de fechas AFIP necesita `TZ=America/Argentina/Buenos_Aires`).
+  Para builds reproducibles, fijar un commit de pyafipws (`...pyafipws.git@<sha>`).
+- **TLS lo termina un proxy externo:** uvicorn corre con
+  `--proxy-headers --forwarded-allow-ips "*"`. La cookie de sesión lleva `Secure`
+  en `producción` (ver `app/main.py`), así que **sin proxy HTTPS por delante no se
+  puede loguear**. El puerto se publica solo en `127.0.0.1:8000`.
+- **Estado persistente = bind mounts** (no versionar): `certs/`, `pdfs/`, `logs/`
+  y el host `./afip_cache` → contenedor `/app/.afip_cache`. El `APP_UID` (build
+  arg, default 1000) debe coincidir con el dueño de esas carpetas en el host.
+- El **entrypoint corre `scripts/init_db.py` en cada arranque** (idempotente: crea
+  tablas + admin) — pero **no hace ALTER TABLE** (ver "Migraciones de esquema").
+- Healthcheck contra `GET /health` (`app/main.py`).
+
+```powershell
+docker compose build
+docker compose up -d
+docker compose config --quiet   # validar el compose sin levantar nada
+```
+
 ## Arquitectura
 
 Capas (de afuera hacia adentro): **routers** (web) → **services** (negocio) →
