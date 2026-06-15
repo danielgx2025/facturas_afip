@@ -1,28 +1,27 @@
-"""Dependencias de FastAPI para autenticación y control de roles.
+"""Dependencias de FastAPI para autenticación y control de permisos.
 
 El login guarda ``user_id`` en la sesión (cookie firmada). Estas dependencias
-recuperan el usuario actual y restringen el acceso por rol.
+recuperan el usuario actual y restringen el acceso según los permisos de su rol
+(ver ``app.auth.permisos``).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.usuario import RolUsuario, Usuario
+from app.models.usuario import Usuario
 
 
 class NotAuthenticatedError(Exception):
     """Se lanza cuando no hay usuario en sesión (se traduce a redirect al login)."""
 
 
-def get_current_user(
-    request: Request, db: Session = Depends(get_db)
-) -> Usuario:
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> Usuario:
     """Devuelve el usuario autenticado o lanza ``NotAuthenticatedError``."""
     user_id = request.session.get("user_id")
     if not user_id:
@@ -34,14 +33,12 @@ def get_current_user(
     return user
 
 
-def require_role(*roles: RolUsuario) -> Callable[..., Usuario]:
-    """Crea una dependencia que exige uno de los roles indicados."""
+def require_permission(permiso: str) -> Callable[..., Usuario]:
+    """Crea una dependencia que exige que el rol del usuario tenga ``permiso``."""
 
     def _checker(user: Usuario = Depends(get_current_user)) -> Usuario:
-        if roles and user.rol not in roles:
+        if not user.puede(permiso):
             # 403: autenticado pero sin permisos.
-            from fastapi import HTTPException, status
-
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tenés permisos para esta acción.",

@@ -10,7 +10,8 @@ from app.models.comprobante_item import ComprobanteItem
 from app.models.empresa import Empresa
 from app.models.producto import Producto
 from app.models.punto_venta import PuntoVenta
-from app.models.usuario import RolUsuario, Usuario
+from app.models.rol import Rol
+from app.models.usuario import Usuario
 
 __all__ = [
     "Cliente",
@@ -19,6 +20,6 @@ __all__ = [
     "Empresa",
     "Producto",
     "PuntoVenta",
-    "RolUsuario",
+    "Rol",
     "Usuario",
 ]

@@ -180,8 +180,28 @@ comprobante → base64 → `https://www.afip.gob.ar/fe/qr/?p=<b64>`.
 Render en servidor (Jinja2 + Bootstrap, `app/web.py` con helper `render()` y
 mensajes *flash* en sesión). Auth por cookie de sesión (`SessionMiddleware`).
 `get_current_user` lanza `NotAuthenticatedError` → handler global en `main.py`
-redirige a `/login`. `require_role(RolUsuario.ADMIN)` protege la gestión de
-empresas/certificados.
+redirige a `/login`.
+
+### Roles y permisos (`app/models/rol.py`, `app/auth/permisos.py`, `app/auth/dependencies.py`)
+Los roles son **dinámicos** (tabla `roles`), no un Enum fijo. Cada `Rol` guarda en
+`permisos` (columna **JSON**, lista de claves) qué secciones habilita; el catálogo
+de claves es `PERMISOS` en `app/auth/permisos.py` (única fuente de verdad: form de
+roles, validación y siembra). `Usuario.rol_id` → FK a `roles`; `Usuario.puede(perm)`
+chequea el permiso. El gate de cada sección se aplica **al incluir el router** en
+`app/main.py` con `dependencies=[Depends(require_permission("<clave>"))]` (cada ruta
+conserva su `Depends(get_current_user)`); el navbar oculta ítems con
+`{% if user.puede('<clave>') %}`. El rol `admin` se siembra con `sistema=True`
+(protegido: no se borra/renombra ni pierde el permiso `usuarios`). **Anti-bloqueo**
+(en `routers/usuarios.py`): nunca se puede dejar el sistema sin un usuario activo con
+el permiso `usuarios` (`PERMISO_ADMIN`), ni desactivarse uno a sí mismo. El panel de
+administración vive en `routers/usuarios.py` + `routers/roles.py` (gate `usuarios`) y
+el autoservicio de contraseña en `routers/cuenta.py` (solo autenticado).
+
+> El cambio de Enum fijo a roles dinámicos requiere `scripts/migrar_roles.py`
+> (one-off idempotente) en bases existentes: crea `roles`, agrega `usuarios.rol_id`,
+> backfilltea desde la columna vieja `rol` y la elimina (ver "Migraciones de
+> esquema"). En bases nuevas, `init_db.py` ya crea el esquema correcto y siembra los
+> roles base (`crear_roles_base`).
 
 Convenciones de los ABM (clientes/productos/empresas, mantenerlas al agregar
 entidades):

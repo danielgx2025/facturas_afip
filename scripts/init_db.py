@@ -21,11 +21,27 @@ from pathlib import Path
 # Permite ejecutar el script directamente (python scripts/init_db.py).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.auth.permisos import PERMISOS  # noqa: E402
 from app.auth.security import hash_password  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.logging_config import get_logger  # noqa: E402
-from app.models import Empresa, PuntoVenta, RolUsuario, Usuario  # noqa: E402
+from app.models import Empresa, PuntoVenta, Rol, Usuario  # noqa: E402
+
+# Roles base sembrados al inicializar (idempotente). El rol "admin" es de sistema
+# (protegido) y tiene todos los permisos del catálogo.
+ROLES_BASE: dict[str, dict] = {
+    "admin": {
+        "descripcion": "Acceso total: gestiona empresas, usuarios y roles.",
+        "permisos": list(PERMISOS.keys()),
+        "sistema": True,
+    },
+    "facturador": {
+        "descripcion": "Emite y consulta comprobantes.",
+        "permisos": ["dashboard", "facturas", "clientes", "productos"],
+        "sistema": False,
+    },
+}
 
 # Importante: importar app.models (arriba) registra TODOS los modelos en
 # Base.metadata antes de create_all.
@@ -39,6 +55,33 @@ def crear_tablas() -> None:
     logger.info("Tablas creadas/verificadas en '%s'.", settings.db_name)
 
 
+def crear_roles_base() -> None:
+    """Crea/actualiza los roles base (idempotente).
+
+    Crea los roles faltantes y, para los ya existentes, garantiza que el rol de
+    sistema conserve todos los permisos (no toca roles personalizados).
+    """
+    with SessionLocal() as db:
+        for nombre, datos in ROLES_BASE.items():
+            rol = db.query(Rol).filter(Rol.nombre == nombre).first()
+            if rol is None:
+                db.add(
+                    Rol(
+                        nombre=nombre,
+                        descripcion=datos["descripcion"],
+                        permisos=list(datos["permisos"]),
+                        sistema=datos["sistema"],
+                    )
+                )
+                logger.info("Rol base '%s' creado.", nombre)
+            elif datos["sistema"]:
+                # El rol de sistema siempre debe estar protegido y con todos los
+                # permisos (cubre catálogos ampliados en versiones futuras).
+                rol.sistema = True
+                rol.permisos = list(datos["permisos"])
+        db.commit()
+
+
 def crear_admin() -> None:
     """Crea el usuario administrador si todavía no existe."""
     with SessionLocal() as db:
@@ -50,11 +93,15 @@ def crear_admin() -> None:
         if existe:
             logger.info("El usuario admin '%s' ya existe.", settings.admin_username)
             return
+        rol_admin = db.query(Rol).filter(Rol.nombre == "admin").first()
+        if rol_admin is None:
+            logger.error("No existe el rol 'admin'; ejecutá crear_roles_base primero.")
+            return
         admin = Usuario(
             username=settings.admin_username,
             email=settings.admin_email,
             hashed_password=hash_password(settings.admin_password),
-            rol=RolUsuario.ADMIN,
+            rol_id=rol_admin.id,
             activo=True,
         )
         db.add(admin)
@@ -82,7 +129,7 @@ def crear_empresa_demo() -> None:
             ingresos_brutos="",
             inicio_actividades="2020-01-01",
             cert_path="empresa_demo.crt",  # relativo a certs/
-            key_path="empresa_demo.key",   # relativo a certs/
+            key_path="empresa_demo.key",  # relativo a certs/
             modo="homologacion",
             activo=True,
         )
@@ -97,6 +144,7 @@ def crear_empresa_demo() -> None:
 def main() -> None:
     settings.ensure_directories()
     crear_tablas()
+    crear_roles_base()
     crear_admin()
     # La empresa emisora se registra con scripts/preparar_certificado.py
     # (desde el .p12) o desde la web. No se crea una empresa demo ficticia.

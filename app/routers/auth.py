@@ -31,13 +31,17 @@ def login(
 ):
     """Valida credenciales y crea la sesión."""
     user = db.query(Usuario).filter(Usuario.username == username).first()
-    if user is None or not user.activo or not verify_password(password, user.hashed_password):
+    if (
+        user is None
+        or not user.activo
+        or not verify_password(password, user.hashed_password)
+    ):
         flash(request, "Usuario o contraseña incorrectos.", "danger")
         return render(request, "login.html", status_code=401)
 
     request.session["user_id"] = user.id
     request.session["username"] = user.username
-    request.session["rol"] = user.rol.value
+    request.session["rol"] = user.rol.nombre
     flash(request, f"Bienvenido, {user.username}.", "success")
     return RedirectResponse(url="/facturas", status_code=303)
 

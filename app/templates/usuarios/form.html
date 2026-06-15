@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% set u = usuario if usuario is defined else none %}
+{% block title %}{{ "Editar" if u else "Nuevo" }} usuario — Facturación AFIP{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">{{ "Editar usuario" if u else "Nuevo usuario" }}</h3>
+
+<form method="post" action="{{ '/usuarios/' ~ u.id if u else '/usuarios' }}" class="row g-3">
+  <div class="col-md-6">
+    <label class="form-label">Nombre de usuario</label>
+    <input type="text" name="username" class="form-control" value="{{ u.username if u else '' }}" required />
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Email</label>
+    <input type="email" name="email" class="form-control" value="{{ u.email if u else '' }}" required />
+  </div>
+
+  {% if not u %}
+  <div class="col-md-6">
+    <label class="form-label">Contraseña</label>
+    <input type="password" name="password" class="form-control" required />
+    <div class="form-text">Luego se puede blanquear desde la lista de usuarios.</div>
+  </div>
+  {% endif %}
+
+  <div class="col-md-6">
+    <label class="form-label">Rol</label>
+    <select name="rol_id" class="form-select" required>
+      {% for r in roles %}
+      <option value="{{ r.id }}" {{ "selected" if u and u.rol_id == r.id else "" }}>{{ r.nombre }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-12">
+    <div class="form-check">
+      <input type="checkbox" name="activo" value="true" class="form-check-input"
+             id="check-activo" {{ "checked" if (u and u.activo) or not u else "" }} />
+      <label class="form-check-label" for="check-activo">Activo</label>
+    </div>
+    <div class="form-text">Los usuarios inactivos no pueden iniciar sesión.</div>
+  </div>
+
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">
+      {{ "Guardar cambios" if u else "Guardar usuario" }}
+    </button>
+    <a href="/usuarios" class="btn btn-outline-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

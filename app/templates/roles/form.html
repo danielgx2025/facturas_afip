@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% set r = rol if rol is defined else none %}
+{% block title %}{{ "Editar" if r else "Nuevo" }} rol — Facturación AFIP{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">{{ "Editar rol" if r else "Nuevo rol" }}</h3>
+
+<form method="post" action="{{ '/roles/' ~ r.id if r else '/roles' }}" class="row g-3">
+  <div class="col-md-5">
+    <label class="form-label">Nombre</label>
+    <input type="text" name="nombre" class="form-control" value="{{ r.nombre if r else '' }}"
+           required {{ "readonly" if r and r.sistema else "" }} />
+    {% if r and r.sistema %}
+    <div class="form-text">Rol del sistema: el nombre no se puede cambiar.</div>
+    {% endif %}
+  </div>
+  <div class="col-md-7">
+    <label class="form-label">Descripción</label>
+    <input type="text" name="descripcion" class="form-control" value="{{ r.descripcion if r else '' }}" />
+  </div>
+
+  <div class="col-12">
+    <label class="form-label">Permisos (secciones que puede usar)</label>
+    <div class="row">
+      {% for clave, etiqueta in permisos.items() %}
+      {% set marcado = r and clave in r.permisos %}
+      {% set bloqueado = r and r.sistema and clave == 'usuarios' %}
+      <div class="col-md-6">
+        <div class="form-check">
+          <input type="checkbox" name="permisos" value="{{ clave }}" class="form-check-input"
+                 id="perm-{{ clave }}"
+                 {{ "checked" if marcado or bloqueado else "" }}
+                 {{ "disabled" if bloqueado else "" }} />
+          <label class="form-check-label" for="perm-{{ clave }}">{{ etiqueta }}</label>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if r and r.sistema %}
+    <div class="form-text">El permiso de usuarios y roles no se puede quitar de un rol del sistema.</div>
+    {% endif %}
+  </div>
+
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary">
+      {{ "Guardar cambios" if r else "Guardar rol" }}
+    </button>
+    <a href="/roles" class="btn btn-outline-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

@@ -10,15 +10,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.auth.dependencies import NotAuthenticatedError
+from app.auth.dependencies import NotAuthenticatedError, require_permission
 from app.config import settings
 from app.logging_config import setup_logging
-from app.routers import auth, clientes, dashboard, empresas, facturas, productos
+from app.routers import (
+    auth,
+    clientes,
+    cuenta,
+    dashboard,
+    empresas,
+    facturas,
+    productos,
+    roles,
+    usuarios,
+)
 
 setup_logging()
 settings.ensure_directories()
@@ -38,6 +48,7 @@ app.add_middleware(
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
+
 @app.exception_handler(NotAuthenticatedError)
 async def not_authenticated_handler(
     request: Request, exc: NotAuthenticatedError
@@ -46,13 +57,29 @@ async def not_authenticated_handler(
     return RedirectResponse(url="/login", status_code=303)
 
 
-# Routers de la aplicación.
+# Routers de la aplicación. El gate de permiso se aplica al incluir cada router;
+# cada ruta conserva su propio Depends(get_current_user) para tener el objeto user.
 app.include_router(auth.router)
-app.include_router(empresas.router)
-app.include_router(clientes.router)
-app.include_router(productos.router)
-app.include_router(facturas.router)
-app.include_router(dashboard.router)
+app.include_router(cuenta.router)
+app.include_router(
+    empresas.router, dependencies=[Depends(require_permission("empresas"))]
+)
+app.include_router(
+    clientes.router, dependencies=[Depends(require_permission("clientes"))]
+)
+app.include_router(
+    productos.router, dependencies=[Depends(require_permission("productos"))]
+)
+app.include_router(
+    facturas.router, dependencies=[Depends(require_permission("facturas"))]
+)
+app.include_router(
+    dashboard.router, dependencies=[Depends(require_permission("dashboard"))]
+)
+app.include_router(
+    usuarios.router, dependencies=[Depends(require_permission("usuarios"))]
+)
+app.include_router(roles.router, dependencies=[Depends(require_permission("usuarios"))])
 
 
 @app.get("/", include_in_schema=False)

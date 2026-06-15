@@ -16,12 +16,24 @@
     <div class="container-fluid">
       <a class="navbar-brand" href="/facturas">🧾 Facturación AFIP</a>
       <div class="navbar-nav me-auto">
+        {% if user.puede('facturas') %}
         <a class="nav-link" href="/facturas">Comprobantes</a>
+        {% endif %}
+        {% if user.puede('dashboard') %}
         <a class="nav-link" href="/dashboard">Dashboard</a>
+        {% endif %}
+        {% if user.puede('clientes') %}
         <a class="nav-link" href="/clientes">Clientes</a>
+        {% endif %}
+        {% if user.puede('productos') %}
         <a class="nav-link" href="/productos">Productos</a>
-        {% if user.rol.value == 'admin' %}
+        {% endif %}
+        {% if user.puede('empresas') %}
         <a class="nav-link" href="/empresas">Empresas</a>
+        {% endif %}
+        {% if user.puede('usuarios') %}
+        <a class="nav-link" href="/usuarios">Usuarios</a>
+        <a class="nav-link" href="/roles">Roles</a>
         {% endif %}
       </div>
       <div class="navbar-nav">
@@ -30,7 +42,8 @@
         {% else %}
         <span class="navbar-text badge bg-warning text-dark me-3">HOMOLOGACIÓN</span>
         {% endif %}
-        <span class="navbar-text me-3">{{ user.username }} ({{ user.rol.value }})</span>
+        <span class="navbar-text me-3">{{ user.username }} ({{ user.rol.nombre }})</span>
+        <a class="nav-link" href="/cuenta/password">Contraseña</a>
         <a class="nav-link" href="/logout">Salir</a>
       </div>
     </div>

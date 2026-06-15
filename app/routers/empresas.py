@@ -1,4 +1,8 @@
-"""Router de empresas emisoras (alta, edición y certificados). Solo admin."""
+"""Router de empresas emisoras (alta, edición y certificados).
+
+El acceso requiere el permiso ``empresas`` (gate aplicado al incluir el router en
+``app.main``).
+"""
 
 from __future__ import annotations
 
@@ -7,12 +11,12 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user, require_role
+from app.auth.dependencies import get_current_user
 from app.config import settings
 from app.database import get_db
 from app.models.empresa import Empresa
 from app.models.punto_venta import PuntoVenta
-from app.models.usuario import RolUsuario, Usuario
+from app.models.usuario import Usuario
 from app.web import flash, render
 
 router = APIRouter(prefix="/empresas", tags=["empresas"])
@@ -31,7 +35,7 @@ def listar(
 @router.get("/nueva")
 def nueva_form(
     request: Request,
-    user: Usuario = Depends(require_role(RolUsuario.ADMIN)),
+    user: Usuario = Depends(get_current_user),
 ):
     return render(request, "empresas/form.html", user=user)
 
@@ -65,7 +69,7 @@ def crear(
     cert: UploadFile = File(...),
     key: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user: Usuario = Depends(require_role(RolUsuario.ADMIN)),
+    user: Usuario = Depends(get_current_user),
 ):
     """Crea la empresa, guarda sus certificados y su punto de venta."""
     cuit = cuit.strip()
@@ -103,7 +107,7 @@ def editar_form(
     request: Request,
     empresa_id: int,
     db: Session = Depends(get_db),
-    user: Usuario = Depends(require_role(RolUsuario.ADMIN)),
+    user: Usuario = Depends(get_current_user),
 ):
     empresa = _obtener_empresa(db, empresa_id)
     return render(request, "empresas/form.html", {"empresa": empresa}, user=user)
@@ -123,7 +127,7 @@ def actualizar(
     cert: UploadFile | None = File(None),
     key: UploadFile | None = File(None),
     db: Session = Depends(get_db),
-    user: Usuario = Depends(require_role(RolUsuario.ADMIN)),
+    user: Usuario = Depends(get_current_user),
 ):
     """Actualiza los datos de la empresa.
 
