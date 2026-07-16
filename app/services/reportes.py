@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.cliente import Cliente
@@ -33,6 +34,30 @@ def buscar_comprobantes(
     return consulta.order_by(
         Comprobante.fecha, Comprobante.punto_venta, Comprobante.numero
     ).all()
+
+
+def buscar_clientes(
+    db: Session,
+    *,
+    texto: str = "",
+    empresa_id: int | None = None,
+    estado: str = "todos",
+) -> list[Cliente]:
+    """Clientes para el listado de ``/reportes/clientes``. ``estado`` ya llega
+    normalizado a ``"activos" | "inactivos" | "todos"`` desde el router."""
+    consulta = db.query(Cliente).options(joinedload(Cliente.empresa))
+    if texto:
+        patron = f"%{texto}%"
+        consulta = consulta.filter(
+            or_(Cliente.razon_social.ilike(patron), Cliente.nro_doc.ilike(patron))
+        )
+    if empresa_id:
+        consulta = consulta.filter(Cliente.empresa_id == empresa_id)
+    if estado == "activos":
+        consulta = consulta.filter(Cliente.fecha_baja.is_(None))
+    elif estado == "inactivos":
+        consulta = consulta.filter(Cliente.fecha_baja.isnot(None))
+    return consulta.order_by(Cliente.razon_social).all()
 
 
 def calcular_totales(comprobantes: list[Comprobante]) -> dict[str, float]:

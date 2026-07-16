@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse, Response
@@ -19,13 +20,15 @@ from app.models.usuario import Usuario
 from app.services.estado_cuenta import calcular_estado_cuenta
 from app.services.excel_service import (
     generar_excel_estado_cuenta,
+    generar_excel_listado_clientes,
     generar_excel_reporte_facturas,
 )
 from app.services.pdf_service import (
     generar_pdf_estado_cuenta,
+    generar_pdf_listado_clientes,
     generar_pdf_reporte_facturas,
 )
-from app.services.reportes import buscar_comprobantes, calcular_totales
+from app.services.reportes import buscar_clientes, buscar_comprobantes, calcular_totales
 from app.web import flash, render
 
 router = APIRouter(prefix="/reportes", tags=["reportes"])
@@ -83,6 +86,29 @@ def _nombre_archivo_cuenta(
         f"estado_cuenta_{_slug(cliente.razon_social)}_{fecha_inicio}_{fecha_fin}"
         f".{extension}"
     )
+
+
+def _parse_filtros_clientes(
+    texto: str, empresa_id: str, estado: str
+) -> tuple[str, int | None, str]:
+    """Normaliza los filtros del listado de clientes: ``texto`` se recorta,
+    ``empresa_id`` cae a ``None`` si no es un id válido y ``estado`` cae a
+    ``"todos"`` si no es uno de los tres valores esperados."""
+    texto = texto.strip()
+    emp_id = int(empresa_id) if empresa_id.strip().isdigit() else None
+    estado = estado if estado in {"activos", "inactivos"} else "todos"
+    return texto, emp_id, estado
+
+
+def _nombre_archivo_clientes(
+    texto: str, empresa: Empresa | None, estado: str, extension: str
+) -> str:
+    partes = ["listado_clientes", estado]
+    if empresa:
+        partes.append(_slug(empresa.razon_social))
+    if texto:
+        partes.append(_slug(texto))
+    return "_".join(partes) + f".{extension}"
 
 
 @router.get("/facturas")
@@ -282,6 +308,83 @@ def estado_cuenta_xlsx(
     estado = calcular_estado_cuenta(db, cliente=cliente, fecha_inicio=fi, fecha_fin=ff)
     contenido = generar_excel_estado_cuenta(estado)
     nombre = _nombre_archivo_cuenta(fi, ff, cliente, "xlsx")
+    return Response(
+        content=contenido,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
+@router.get("/clientes")
+def clientes_formulario(
+    request: Request,
+    texto: str = "",
+    empresa_id: str = "",
+    estado: str = "",
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    txt, emp_id, est = _parse_filtros_clientes(texto, empresa_id, estado)
+    clientes = buscar_clientes(db, texto=txt, empresa_id=emp_id, estado=est)
+    empresas = (
+        db.query(Empresa)
+        .filter(Empresa.activo.is_(True))
+        .order_by(Empresa.razon_social)
+        .all()
+    )
+    query_string = urlencode({"texto": txt, "empresa_id": emp_id or "", "estado": est})
+    return render(
+        request,
+        "reportes/clientes.html",
+        {
+            "clientes": clientes,
+            "empresas": empresas,
+            "texto": txt,
+            "empresa_id": emp_id,
+            "estado": est,
+            "query_string": query_string,
+        },
+        user=user,
+    )
+
+
+@router.get("/clientes/pdf")
+def clientes_pdf(
+    texto: str = "",
+    empresa_id: str = "",
+    estado: str = "",
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+) -> Response:
+    txt, emp_id, est = _parse_filtros_clientes(texto, empresa_id, estado)
+    clientes = buscar_clientes(db, texto=txt, empresa_id=emp_id, estado=est)
+    empresa = db.get(Empresa, emp_id) if emp_id else None
+    contenido = generar_pdf_listado_clientes(
+        clientes, texto=txt, empresa=empresa, estado=est
+    )
+    nombre = _nombre_archivo_clientes(txt, empresa, est, "pdf")
+    return Response(
+        content=contenido,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
+@router.get("/clientes/xlsx")
+def clientes_xlsx(
+    texto: str = "",
+    empresa_id: str = "",
+    estado: str = "",
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+) -> Response:
+    txt, emp_id, est = _parse_filtros_clientes(texto, empresa_id, estado)
+    clientes = buscar_clientes(db, texto=txt, empresa_id=emp_id, estado=est)
+    empresa = db.get(Empresa, emp_id) if emp_id else None
+    contenido = generar_excel_listado_clientes(
+        clientes, texto=txt, empresa=empresa, estado=est
+    )
+    nombre = _nombre_archivo_clientes(txt, empresa, est, "xlsx")
     return Response(
         content=contenido,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

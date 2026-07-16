@@ -443,3 +443,98 @@ def generar_pdf_estado_cuenta(estado: EstadoCuenta) -> bytes:
     doc.build(elementos)
     buffer.seek(0)
     return buffer.getvalue()
+
+
+ESTADO_LABEL = {"activos": "Activos", "inactivos": "Inactivos", "todos": "Todos"}
+
+
+def generar_pdf_listado_clientes(
+    clientes: list[Cliente],
+    *,
+    texto: str,
+    empresa: Empresa | None,
+    estado: str,
+) -> bytes:
+    """Genera el PDF tabular del listado de clientes. No recibe ``db``: los
+    clientes ya vienen con ``empresa`` precargada; no escribe a disco."""
+    styles = getSampleStyleSheet()
+    style_normal = styles["Normal"]
+    style_title = styles["Title"]
+    style_celda = styles["Normal"].clone("celda_listado_clientes")
+    style_celda.fontSize = 7
+    style_celda.leading = 8.5
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        leftMargin=15 * mm,
+        rightMargin=15 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+    )
+    elementos: list = [
+        Paragraph("Listado de clientes", style_title),
+        Paragraph(f"Filtro: {ESTADO_LABEL.get(estado, estado)}", style_normal),
+        Paragraph(
+            f"Empresa: {empresa.razon_social if empresa else 'Todas las empresas'}",
+            style_normal,
+        ),
+    ]
+    if texto:
+        elementos.append(Paragraph(f"Búsqueda: {texto}", style_normal))
+    elementos.append(Spacer(1, 6 * mm))
+
+    if not clientes:
+        elementos.append(
+            Paragraph(
+                "No se encontraron clientes para los filtros seleccionados.",
+                style_normal,
+            )
+        )
+        doc.build(elementos)
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    encabezado = [
+        "Razón social",
+        "Tipo Doc.",
+        "Documento",
+        "Cond. IVA",
+        "Empresa",
+        "Email",
+        "Estado",
+    ]
+    filas = [encabezado]
+    for c in clientes:
+        estado_texto = "Activo" if c.activo else f"Baja {c.fecha_baja:%d/%m/%Y}"
+        filas.append(
+            [
+                Paragraph(c.razon_social, style_celda),
+                str(c.tipo_doc),
+                c.nro_doc,
+                Paragraph(c.condicion_iva, style_celda),
+                Paragraph(c.empresa.razon_social, style_celda),
+                Paragraph(c.email, style_celda),
+                estado_texto,
+            ]
+        )
+
+    col_widths = [55 * mm, 18 * mm, 30 * mm, 40 * mm, 45 * mm, 55 * mm, 24 * mm]
+    tabla = Table(filas, colWidths=col_widths, repeatRows=1)
+    tabla.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#343a40")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    elementos.append(tabla)
+
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer.getvalue()

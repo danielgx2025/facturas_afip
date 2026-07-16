@@ -212,3 +212,86 @@ def generar_excel_estado_cuenta(estado: EstadoCuenta) -> bytes:
     wb.save(buffer)
     buffer.seek(0)
     return buffer.getvalue()
+
+
+ESTADO_LABEL = {"activos": "Activos", "inactivos": "Inactivos", "todos": "Todos"}
+
+
+def generar_excel_listado_clientes(
+    clientes: list[Cliente],
+    *,
+    texto: str,
+    empresa: Empresa | None,
+    estado: str,
+) -> bytes:
+    """Genera el XLSX del listado de clientes y devuelve los bytes."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Listado de clientes"
+
+    encabezado = [
+        "Razón social",
+        "Tipo Doc.",
+        "Documento",
+        "Cond. IVA",
+        "Empresa",
+        "Email",
+        "Estado",
+    ]
+    n_cols = len(encabezado)
+
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols)
+    ws.cell(row=1, column=1, value="Listado de clientes").font = FUENTE_TITULO
+
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
+    subtitulo = f"Filtro: {ESTADO_LABEL.get(estado, estado)}"
+    if texto:
+        subtitulo += f"  |  Búsqueda: {texto}"
+    ws.cell(row=2, column=1, value=subtitulo)
+
+    ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=n_cols)
+    ws.cell(
+        row=3,
+        column=1,
+        value=f"Empresa: {empresa.razon_social if empresa else 'Todas las empresas'}",
+    )
+
+    fila_encabezado = 5
+    for col, titulo in enumerate(encabezado, start=1):
+        celda = ws.cell(row=fila_encabezado, column=col, value=titulo)
+        celda.font = FUENTE_ENCABEZADO
+        celda.fill = RELLENO_ENCABEZADO
+
+    if not clientes:
+        ws.merge_cells(
+            start_row=fila_encabezado + 1,
+            start_column=1,
+            end_row=fila_encabezado + 1,
+            end_column=n_cols,
+        )
+        ws.cell(
+            row=fila_encabezado + 1,
+            column=1,
+            value="No se encontraron clientes para los filtros seleccionados.",
+        )
+    else:
+        fila = fila_encabezado + 1
+        for c in clientes:
+            estado_texto = "Activo" if c.activo else f"Baja {c.fecha_baja:%d/%m/%Y}"
+            ws.cell(row=fila, column=1, value=c.razon_social)
+            ws.cell(row=fila, column=2, value=c.tipo_doc)
+            ws.cell(row=fila, column=3, value=c.nro_doc)
+            ws.cell(row=fila, column=4, value=c.condicion_iva)
+            ws.cell(row=fila, column=5, value=c.empresa.razon_social)
+            ws.cell(row=fila, column=6, value=c.email)
+            ws.cell(row=fila, column=7, value=estado_texto)
+            fila += 1
+
+    anchos = {1: 35, 2: 10, 3: 16, 4: 22, 5: 28, 6: 30, 7: 18}
+    for col in range(1, n_cols + 1):
+        ws.column_dimensions[get_column_letter(col)].width = anchos.get(col, 16)
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()

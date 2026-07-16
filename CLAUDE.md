@@ -150,7 +150,12 @@ si AFIP aprobó** → genera el PDF (fallo de PDF no invalida el CAE). Reglas cl
 
 ### Datos (`app/models/`)
 Multiempresa: `Empresa` guarda `cert_path`/`key_path` **relativos a `certs/`** (la
-base solo guarda la ruta; los PEM viven en disco). `Comprobante` guarda CAE,
+base solo guarda la ruta; los PEM viven en disco). Cada `Empresa` tiene uno o más
+`PuntoVenta` (`empresa.puntos_venta`, `UniqueConstraint(empresa_id, numero)`); al
+crear la empresa se le da de alta un punto de venta "Principal", y el formulario
+de emisión (`routers/facturas.py`) elige entre los puntos de venta **activos** de
+la empresa seleccionada — `emitir_factura`/`numeracion.siguiente_numero` reciben
+`punto_venta` como parámetro, nunca hardcodeado. `Comprobante` guarda CAE,
 vencimiento, resultado, `cbte_asociado_id` (autoreferencia para NC/ND) y `fecha`
 como **string `"YYYY-MM-DD"`** (las agregaciones del dashboard agrupan por mes con
 `substr(fecha,1,7)` y filtran rangos lexicográficamente). Bajas **lógicas**:
@@ -164,6 +169,22 @@ Una sola query agrupa por mes+cliente; **las notas de crédito restan**
 de período es **calendario en curso** (mensual/trimestral/semestral/anual) con
 límite superior exclusivo. Los gráficos son Chart.js por CDN con los datos
 embebidos vía `tojson` (sin endpoint JSON).
+
+### Reportes (`app/routers/reportes.py` + `app/services/{reportes,estado_cuenta,excel_service}.py`)
+Dos reportes, cada uno con vista web + descarga en **PDF** (`pdf_service.py`) y
+**XLSX** (`excel_service.py`, openpyxl):
+- **Reporte de facturas** (`/reportes/facturas`): `reportes.buscar_comprobantes`
+  filtra por rango de fechas (inclusive) + cliente/empresa opcionales; incluye
+  todos los tipos (facturas y NC/ND) sin netear — la columna "Tipo" ya las
+  distingue.
+- **Estado de cuenta por cliente** (`/reportes/estado-cuenta`):
+  `estado_cuenta.calcular_estado_cuenta` arma saldo anterior (comprobantes con
+  CAE antes del período) + movimientos del período con **saldo corriente
+  acumulado** línea a línea; mismo criterio que `estadisticas.py` — solo
+  comprobantes con CAE, notas de crédito restan.
+- Ambos routers reusan el patrón de `dashboard.index` para filtros opcionales
+  (`str = ""` → `int | None` a mano, ver "Parámetros opcionales de formularios"
+  más abajo).
 
 ### Certificados (.p12 → PEM)
 pyafipws necesita `.crt` + `.key` PEM separados. `scripts/preparar_certificado.py`

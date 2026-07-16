@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Listado de clientes — Facturación AFIP{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">Listado de clientes</h3>
+
+<form method="get" action="/reportes/clientes" class="row g-2 mb-3">
+  <div class="col-md-3">
+    <label class="form-label">Buscar</label>
+    <input type="text" name="texto" class="form-control" placeholder="Razón social o documento" value="{{ texto }}" />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Empresa</label>
+    <select name="empresa_id" class="form-select">
+      <option value="">Todas las empresas</option>
+      {% for e in empresas %}
+      <option value="{{ e.id }}" {{ "selected" if empresa_id == e.id else "" }}>
+        {{ e.razon_social }} (CUIT {{ e.cuit }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Estado</label>
+    <select name="estado" class="form-select">
+      <option value="todos" {{ "selected" if estado == "todos" else "" }}>Todos</option>
+      <option value="activos" {{ "selected" if estado == "activos" else "" }}>Activos</option>
+      <option value="inactivos" {{ "selected" if estado == "inactivos" else "" }}>Inactivos</option>
+    </select>
+  </div>
+  <div class="col-md-3 d-flex align-items-end">
+    <button type="submit" class="btn btn-outline-primary w-100">Filtrar</button>
+  </div>
+</form>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="text-muted">{{ clientes|length }} cliente(s) encontrados</div>
+  <div>
+    <a href="/reportes/clientes/pdf?{{ query_string }}" class="btn btn-outline-danger btn-sm" target="_blank">Descargar PDF</a>
+    <a href="/reportes/clientes/xlsx?{{ query_string }}" class="btn btn-outline-success btn-sm">Descargar Excel</a>
+  </div>
+</div>
+
+<table class="table table-striped table-hover align-middle">
+  <thead>
+    <tr>
+      <th>Razón social</th>
+      <th>Tipo Doc.</th>
+      <th>Documento</th>
+      <th>Cond. IVA</th>
+      <th>Empresa</th>
+      <th>Email</th>
+      <th>Estado</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in clientes %}
+    <tr {% if not c.activo %}class="text-muted"{% endif %}>
+      <td>{{ c.razon_social }}</td>
+      <td>{{ c.tipo_doc }}</td>
+      <td>{{ c.nro_doc }}</td>
+      <td>{{ c.condicion_iva }}</td>
+      <td>{{ c.empresa.razon_social }}</td>
+      <td>{{ c.email }}</td>
+      <td>
+        {% if c.activo %}
+        <span class="badge bg-success">Activo</span>
+        {% else %}
+        <span class="badge bg-secondary">Baja {{ c.fecha_baja.strftime("%d/%m/%Y") }}</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="7" class="text-center text-muted">
+        No se encontraron clientes para los filtros seleccionados.
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
