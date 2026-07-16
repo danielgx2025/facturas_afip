@@ -13,7 +13,7 @@ from io import BytesIO
 
 import qrcode
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
@@ -29,7 +29,11 @@ from sqlalchemy.orm import Session
 from app.afip.constants import LETRA_COMPROBANTE, TIPOS_COMPROBANTE
 from app.config import settings
 from app.logging_config import get_logger
+from app.models.cliente import Cliente
 from app.models.comprobante import Comprobante
+from app.models.empresa import Empresa
+from app.services.estado_cuenta import EstadoCuenta
+from app.services.reportes import calcular_totales
 
 logger = get_logger("pdf")
 
@@ -145,7 +149,9 @@ def generar_pdf_comprobante(db: Session, comprobante: Comprobante) -> str:
         )
     )
     if cliente.domicilio:
-        elementos.append(Paragraph(f"<b>Domicilio:</b> {cliente.domicilio}", style_small))
+        elementos.append(
+            Paragraph(f"<b>Domicilio:</b> {cliente.domicilio}", style_small)
+        )
     elementos.append(Spacer(1, 4 * mm))
 
     # --- Detalle de ítems ---
@@ -229,3 +235,211 @@ def generar_pdf_comprobante(db: Session, comprobante: Comprobante) -> str:
     doc.build(elementos)
     logger.info("PDF generado: %s", output_path)
     return str(output_path)
+
+
+def generar_pdf_reporte_facturas(
+    comprobantes: list[Comprobante],
+    *,
+    fecha_inicio: str,
+    fecha_fin: str,
+    cliente: Cliente | None = None,
+    empresa: Empresa | None = None,
+) -> bytes:
+    """Genera el PDF tabular del reporte de facturas emitidas.
+
+    A diferencia de ``generar_pdf_comprobante``, no recibe ``db: Session`` (los
+    comprobantes ya vienen con ``cliente``/``empresa`` precargados) y no escribe
+    a disco: no es un documento fiscal, se sirve en memoria.
+    """
+    styles = getSampleStyleSheet()
+    style_normal = styles["Normal"]
+    style_title = styles["Title"]
+    style_celda = styles["Normal"].clone("celda_reporte")
+    style_celda.fontSize = 7
+    style_celda.leading = 8.5
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        leftMargin=15 * mm,
+        rightMargin=15 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+    )
+    elementos: list = []
+
+    elementos.append(Paragraph("Reporte de facturas emitidas", style_title))
+    elementos.append(Paragraph(f"Período: {fecha_inicio} al {fecha_fin}", style_normal))
+    elementos.append(
+        Paragraph(
+            f"Cliente: {cliente.razon_social if cliente else 'Todos los clientes'}",
+            style_normal,
+        )
+    )
+    elementos.append(
+        Paragraph(
+            f"Empresa: {empresa.razon_social if empresa else 'Todas las empresas'}",
+            style_normal,
+        )
+    )
+    elementos.append(Spacer(1, 6 * mm))
+
+    if not comprobantes:
+        elementos.append(
+            Paragraph(
+                "No se encontraron comprobantes para los filtros seleccionados.",
+                style_normal,
+            )
+        )
+        doc.build(elementos)
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    mostrar_empresa = empresa is None
+    encabezado = ["Fecha", "Tipo", "Comprobante", "Cliente"]
+    if mostrar_empresa:
+        encabezado.append("Empresa")
+    encabezado += ["Neto", "IVA", "Total", "CAE", "Vto. CAE"]
+
+    filas = [encabezado]
+    for c in comprobantes:
+        fila = [
+            c.fecha,
+            Paragraph(
+                TIPOS_COMPROBANTE.get(c.tipo_cbte, str(c.tipo_cbte)), style_celda
+            ),
+            f"{c.punto_venta:04d}-{c.numero:08d}",
+            Paragraph(c.cliente.razon_social, style_celda),
+        ]
+        if mostrar_empresa:
+            fila.append(Paragraph(c.empresa.razon_social, style_celda))
+        fila += [
+            f"${c.importe_neto}",
+            f"${c.importe_iva}",
+            f"${c.importe_total}",
+            c.cae or "",
+            c.cae_vencimiento or "",
+        ]
+        filas.append(fila)
+
+    totales = calcular_totales(comprobantes)
+    fila_totales = ["", "", "", "Totales:"]
+    if mostrar_empresa:
+        fila_totales.append("")
+    fila_totales += [
+        f"${totales['neto']}",
+        f"${totales['iva']}",
+        f"${totales['total']}",
+        "",
+        "",
+    ]
+    filas.append(fila_totales)
+
+    # Ancho disponible en A4 horizontal con márgenes de 15mm: ~267mm.
+    col_cliente = 38 * mm if mostrar_empresa else 76 * mm
+    col_widths = [20 * mm, 28 * mm, 26 * mm, col_cliente]
+    if mostrar_empresa:
+        col_widths.append(38 * mm)
+    col_widths += [22 * mm, 20 * mm, 24 * mm, 30 * mm, 21 * mm]
+
+    idx_neto = len(encabezado) - 5
+    tabla = Table(filas, colWidths=col_widths, repeatRows=1)
+    tabla.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#343a40")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -2), 0.5, colors.grey),
+                ("ALIGN", (idx_neto, 0), (-1, -1), "RIGHT"),
+                ("ALIGN", (0, 0), (idx_neto - 1, -1), "LEFT"),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.grey),
+            ]
+        )
+    )
+    elementos.append(tabla)
+
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def generar_pdf_estado_cuenta(estado: EstadoCuenta) -> bytes:
+    """Genera el PDF tabular del estado de cuenta por cliente.
+
+    Al igual que ``generar_pdf_reporte_facturas``, no recibe ``db: Session``
+    (los datos ya vienen calculados en ``estado``) y no escribe a disco.
+    """
+    styles = getSampleStyleSheet()
+    style_normal = styles["Normal"]
+    style_title = styles["Title"]
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        leftMargin=15 * mm,
+        rightMargin=15 * mm,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+    )
+    elementos: list = [
+        Paragraph("Estado de cuenta", style_title),
+        Paragraph(
+            f"Período: {estado.fecha_inicio} al {estado.fecha_fin}", style_normal
+        ),
+        Paragraph(f"Cliente: {estado.cliente.razon_social}", style_normal),
+        Spacer(1, 6 * mm),
+    ]
+
+    encabezado = ["Fecha", "Tipo", "Comprobante", "Importe", "Saldo"]
+    filas = [encabezado, ["", "Saldo anterior", "", "", f"${estado.saldo_anterior}"]]
+
+    if not estado.movimientos:
+        elementos.append(
+            Paragraph(
+                "No se encontraron movimientos para el período seleccionado.",
+                style_normal,
+            )
+        )
+    for m in estado.movimientos:
+        c = m.comprobante
+        filas.append(
+            [
+                c.fecha,
+                TIPOS_COMPROBANTE.get(c.tipo_cbte, str(c.tipo_cbte)),
+                f"{c.punto_venta:04d}-{c.numero:08d}",
+                f"${m.importe}",
+                f"${m.saldo}",
+            ]
+        )
+    filas.append(
+        ["", "", "", f"Saldo al {estado.fecha_fin}:", f"${estado.saldo_final}"]
+    )
+
+    tabla = Table(
+        filas, colWidths=[28 * mm, 45 * mm, 35 * mm, 35 * mm, 35 * mm], repeatRows=1
+    )
+    tabla.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#343a40")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#e9ecef")),
+                ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -2), 0.5, colors.grey),
+                ("ALIGN", (3, 0), (-1, -1), "RIGHT"),
+                ("ALIGN", (0, 0), (2, -1), "LEFT"),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.grey),
+            ]
+        )
+    )
+    elementos.append(tabla)
+
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer.getvalue()

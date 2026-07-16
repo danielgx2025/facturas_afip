@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Estado de cuenta — Facturación AFIP{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">Estado de cuenta por cliente</h3>
+
+<form method="get" action="/reportes/estado-cuenta" class="row g-2 mb-3">
+  <div class="col-md-4">
+    <label class="form-label">Cliente</label>
+    <select name="cliente_id" class="form-select" required>
+      <option value="" disabled {{ "selected" if not cliente_id else "" }}>Seleccione un cliente…</option>
+      {% for c in clientes %}
+      <option value="{{ c.id }}" {{ "selected" if cliente_id == c.id else "" }}>{{ c.razon_social }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Desde</label>
+    <input type="date" name="fecha_inicio" class="form-control" value="{{ fecha_inicio }}" />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Hasta</label>
+    <input type="date" name="fecha_fin" class="form-control" value="{{ fecha_fin }}" />
+  </div>
+  <div class="col-md-2 d-flex align-items-end">
+    <button type="submit" class="btn btn-outline-primary w-100">Consultar</button>
+  </div>
+</form>
+
+{% if not estado %}
+<p class="text-muted">Seleccione un cliente y un rango de fechas para ver su estado de cuenta.</p>
+{% else %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="text-muted">
+    {{ estado.cantidad_movimientos }} movimiento(s) — Cliente: {{ estado.cliente.razon_social }}
+  </div>
+  <div>
+    <a href="/reportes/estado-cuenta/pdf?{{ query_string }}" class="btn btn-outline-danger btn-sm" target="_blank">Descargar PDF</a>
+    <a href="/reportes/estado-cuenta/xlsx?{{ query_string }}" class="btn btn-outline-success btn-sm">Descargar Excel</a>
+  </div>
+</div>
+
+<table class="table table-striped table-hover align-middle">
+  <thead>
+    <tr>
+      <th>Fecha</th>
+      <th>Tipo</th>
+      <th>Comprobante</th>
+      <th class="text-end">Importe</th>
+      <th class="text-end">Saldo</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr class="table-secondary fw-bold">
+      <td colspan="3">Saldo anterior</td>
+      <td></td>
+      <td class="text-end">${{ estado.saldo_anterior }}</td>
+    </tr>
+    {% for m in estado.movimientos %}
+    <tr>
+      <td>{{ m.comprobante.fecha }}</td>
+      <td>{{ tipos.get(m.comprobante.tipo_cbte, m.comprobante.tipo_cbte) }}</td>
+      <td>{{ "%04d"|format(m.comprobante.punto_venta) }}-{{ "%08d"|format(m.comprobante.numero) }}</td>
+      <td class="text-end">${{ m.importe }}</td>
+      <td class="text-end">${{ m.saldo }}</td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="5" class="text-center text-muted">No se encontraron movimientos para el período seleccionado.</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr class="fw-bold">
+      <td colspan="4" class="text-end">Saldo al {{ fecha_fin }}:</td>
+      <td class="text-end">${{ estado.saldo_final }}</td>
+    </tr>
+  </tfoot>
+</table>
+{% endif %}
+{% endblock %}

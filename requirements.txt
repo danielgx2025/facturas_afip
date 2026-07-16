@@ -35,6 +35,9 @@ itsdangerous==2.2.0             # firma de cookies de sesión (SessionMiddleware
 reportlab==4.2.5
 qrcode[pil]==8.0
 
+# --- Excel (reporte de facturas) ---
+openpyxl==3.1.5
+
 # --- Dependencias de runtime de pyafipws (versión Python 3) ---
 future                            # provee 'past'/'builtins' usados por utils.py
 pysimplesoap==1.8.22             # cliente SOAP (requiere distutils -> setuptools<74)

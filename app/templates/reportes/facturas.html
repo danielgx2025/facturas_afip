@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Reporte de facturas — Facturación AFIP{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">Reporte de facturas emitidas</h3>
+
+<form method="get" action="/reportes/facturas" class="row g-2 mb-3">
+  <div class="col-md-2">
+    <label class="form-label">Desde</label>
+    <input type="date" name="fecha_inicio" class="form-control" value="{{ fecha_inicio }}" />
+  </div>
+  <div class="col-md-2">
+    <label class="form-label">Hasta</label>
+    <input type="date" name="fecha_fin" class="form-control" value="{{ fecha_fin }}" />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Cliente</label>
+    <select name="cliente_id" class="form-select">
+      <option value="">Todos los clientes</option>
+      {% for c in clientes %}
+      <option value="{{ c.id }}" {{ "selected" if cliente_id == c.id else "" }}>{{ c.razon_social }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Empresa</label>
+    <select name="empresa_id" class="form-select">
+      <option value="">Todas las empresas</option>
+      {% for e in empresas %}
+      <option value="{{ e.id }}" {{ "selected" if empresa_id == e.id else "" }}>
+        {{ e.razon_social }} (CUIT {{ e.cuit }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2 d-flex align-items-end">
+    <button type="submit" class="btn btn-outline-primary w-100">Filtrar</button>
+  </div>
+</form>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="text-muted">{{ comprobantes|length }} comprobante(s) encontrados</div>
+  <div>
+    <a href="/reportes/facturas/pdf?{{ query_string }}" class="btn btn-outline-danger btn-sm" target="_blank">Descargar PDF</a>
+    <a href="/reportes/facturas/xlsx?{{ query_string }}" class="btn btn-outline-success btn-sm">Descargar Excel</a>
+  </div>
+</div>
+
+<table class="table table-striped table-hover align-middle">
+  <thead>
+    <tr>
+      <th>Fecha</th>
+      <th>Tipo</th>
+      <th>Comprobante</th>
+      <th>Cliente</th>
+      {% if not empresa_id %}<th>Empresa</th>{% endif %}
+      <th class="text-end">Neto</th>
+      <th class="text-end">IVA</th>
+      <th class="text-end">Total</th>
+      <th>CAE</th>
+      <th>Vto. CAE</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in comprobantes %}
+    <tr>
+      <td>{{ c.fecha }}</td>
+      <td>{{ tipos.get(c.tipo_cbte, c.tipo_cbte) }}</td>
+      <td>{{ "%04d"|format(c.punto_venta) }}-{{ "%08d"|format(c.numero) }}</td>
+      <td>{{ c.cliente.razon_social }}</td>
+      {% if not empresa_id %}<td>{{ c.empresa.razon_social }}</td>{% endif %}
+      <td class="text-end">${{ c.importe_neto }}</td>
+      <td class="text-end">${{ c.importe_iva }}</td>
+      <td class="text-end">${{ c.importe_total }}</td>
+      <td>{{ c.cae }}</td>
+      <td>{{ c.cae_vencimiento }}</td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="{{ 9 if empresa_id else 10 }}" class="text-center text-muted">
+        No se encontraron comprobantes para los filtros seleccionados.
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% if comprobantes %}
+  <tfoot>
+    <tr class="fw-bold">
+      <td colspan="{{ 4 if empresa_id else 5 }}" class="text-end">Totales:</td>
+      <td class="text-end">${{ totales.neto }}</td>
+      <td class="text-end">${{ totales.iva }}</td>
+      <td class="text-end">${{ totales.total }}</td>
+      <td colspan="2"></td>
+    </tr>
+  </tfoot>
+  {% endif %}
+</table>
+{% endblock %}

@@ -26,6 +26,7 @@ from app.routers import (
     empresas,
     facturas,
     productos,
+    reportes,
     roles,
     usuarios,
 )
@@ -75,6 +76,9 @@ app.include_router(
 )
 app.include_router(
     dashboard.router, dependencies=[Depends(require_permission("dashboard"))]
+)
+app.include_router(
+    reportes.router, dependencies=[Depends(require_permission("reportes"))]
 )
 app.include_router(
     usuarios.router, dependencies=[Depends(require_permission("usuarios"))]

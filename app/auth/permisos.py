@@ -14,6 +14,7 @@ from __future__ import annotations
 PERMISOS: dict[str, str] = {
     "dashboard": "Dashboard y estadísticas",
     "facturas": "Comprobantes (emitir y consultar)",
+    "reportes": "Reportes de facturación",
     "clientes": "Clientes",
     "productos": "Productos",
     "empresas": "Empresas y certificados",

@@ -38,7 +38,7 @@ ROLES_BASE: dict[str, dict] = {
     },
     "facturador": {
         "descripcion": "Emite y consulta comprobantes.",
-        "permisos": ["dashboard", "facturas", "clientes", "productos"],
+        "permisos": ["dashboard", "facturas", "reportes", "clientes", "productos"],
         "sistema": False,
     },
 }
