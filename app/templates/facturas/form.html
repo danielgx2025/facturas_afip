@@ -41,7 +41,15 @@
     </div>
 
     <div class="col-md-6">
-      <label class="form-label">Cliente / Receptor</label>
+      <label class="form-label d-flex justify-content-between align-items-center">
+        Cliente / Receptor
+        {% if user.puede('clientes') %}
+        <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="modal"
+                data-bs-target="#modalNuevoCliente">
+          + Nuevo cliente
+        </button>
+        {% endif %}
+      </label>
       <select name="cliente_id" class="form-select" required>
         {% for c in clientes %}
         <option value="{{ c.id }}">{{ c.razon_social }} — {{ c.nro_doc }}</option>
@@ -104,6 +112,77 @@
     <a href="/facturas" class="btn btn-outline-secondary">Cancelar</a>
   </div>
 </form>
+
+{% if user.puede('clientes') %}
+<div class="modal fade" id="modalNuevoCliente" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Nuevo cliente</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Empresa</label>
+            <select id="modal-empresa_id" class="form-select" required>
+              {% for e in empresas %}
+              <option value="{{ e.id }}">{{ e.razon_social }} (CUIT {{ e.cuit }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Razón social</label>
+            <input type="text" id="modal-razon_social" class="form-control" required />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Tipo de documento</label>
+            <select id="modal-tipo_doc" class="form-select">
+              <option value="80">CUIT (80)</option>
+              <option value="86">CUIL (86)</option>
+              <option value="96">DNI (96)</option>
+              <option value="99" selected>Consumidor Final (99)</option>
+            </select>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label">Número de documento</label>
+            <div class="input-group">
+              <input type="text" id="modal-nro_doc" class="form-control" value="0" />
+              <button type="button" id="modal-btn-consultar-afip" class="btn btn-outline-primary">
+                🔍 Consultar AFIP
+              </button>
+            </div>
+          </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <div id="modal-afip-feedback" class="w-100"></div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Condición IVA</label>
+            <select id="modal-condicion_iva" class="form-select">
+              {% for cond in ["Consumidor Final", "Responsable Inscripto", "Monotributo", "Exento"] %}
+              <option {{ "selected" if cond == "Consumidor Final" else "" }}>{{ cond }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label">Domicilio</label>
+            <input type="text" id="modal-domicilio" class="form-control" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Email</label>
+            <input type="email" id="modal-email" class="form-control" />
+          </div>
+        </div>
+        <div id="modal-guardar-feedback" class="mt-3"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" id="modal-btn-guardar" class="btn btn-primary">Guardar cliente</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -161,5 +240,146 @@
     nueva.querySelectorAll("input").forEach((inp) => (inp.value = "0"));
     tbodyItems.appendChild(nueva);
   });
+
+  // Alta rápida de cliente desde el modal, sin salir del formulario de factura.
+  const modalNuevoClienteEl = document.getElementById("modalNuevoCliente");
+  if (modalNuevoClienteEl) {
+    (function () {
+      const modal = bootstrap.Modal.getOrCreateInstance(modalNuevoClienteEl);
+      const selectEmpresaFactura = document.querySelector('select[name="empresa_id"]');
+      const modalEmpresaId = document.getElementById("modal-empresa_id");
+      const modalRazonSocial = document.getElementById("modal-razon_social");
+      const modalTipoDoc = document.getElementById("modal-tipo_doc");
+      const modalNroDoc = document.getElementById("modal-nro_doc");
+      const modalCondicionIva = document.getElementById("modal-condicion_iva");
+      const modalDomicilio = document.getElementById("modal-domicilio");
+      const modalEmail = document.getElementById("modal-email");
+      const afipFeedback = document.getElementById("modal-afip-feedback");
+      const guardarFeedback = document.getElementById("modal-guardar-feedback");
+      const btnConsultarAfip = document.getElementById("modal-btn-consultar-afip");
+      const btnGuardar = document.getElementById("modal-btn-guardar");
+
+      function aviso(el, mensaje, tipo) {
+        el.innerHTML =
+          '<div class="alert alert-' + tipo + ' py-1 px-2 mb-0 small">' + mensaje + "</div>";
+      }
+
+      function setSelect(select, valor) {
+        const objetivo = (valor || "").trim().toLowerCase();
+        for (const opt of select.options) {
+          if (opt.text.trim().toLowerCase() === objetivo) {
+            select.value = opt.value || opt.text;
+            return;
+          }
+        }
+      }
+
+      function limpiarModal() {
+        modalRazonSocial.value = "";
+        modalTipoDoc.value = "99";
+        modalNroDoc.value = "0";
+        modalCondicionIva.value = "Consumidor Final";
+        modalDomicilio.value = "";
+        modalEmail.value = "";
+        afipFeedback.innerHTML = "";
+        guardarFeedback.innerHTML = "";
+      }
+
+      // Precarga la empresa del modal con la elegida como emisora en la factura.
+      modalNuevoClienteEl.addEventListener("show.bs.modal", function () {
+        if (selectEmpresaFactura.value) modalEmpresaId.value = selectEmpresaFactura.value;
+      });
+
+      btnConsultarAfip.addEventListener("click", async function () {
+        const empresaId = modalEmpresaId.value;
+        const cuit = (modalNroDoc.value || "").replace(/\D/g, "");
+
+        if (!empresaId) {
+          aviso(afipFeedback, "Elegí una empresa emisora primero.", "warning");
+          return;
+        }
+        if (cuit.length !== 11) {
+          aviso(afipFeedback, "Ingresá un CUIT de 11 dígitos para consultar AFIP.", "warning");
+          return;
+        }
+
+        btnConsultarAfip.disabled = true;
+        aviso(afipFeedback, "Consultando AFIP…", "info");
+        try {
+          const url =
+            "/clientes/consultar-afip?empresa_id=" +
+            encodeURIComponent(empresaId) +
+            "&cuit=" +
+            encodeURIComponent(cuit);
+          const resp = await fetch(url, { headers: { Accept: "application/json" } });
+          const data = await resp.json();
+
+          if (!data.ok) {
+            aviso(afipFeedback, data.error || "No se pudieron obtener los datos.", "danger");
+            return;
+          }
+
+          modalTipoDoc.value = String(data.tipo_doc);
+          modalNroDoc.value = data.nro_doc;
+          modalRazonSocial.value = data.razon_social || "";
+          modalDomicilio.value = data.domicilio || "";
+          setSelect(modalCondicionIva, data.condicion_iva);
+
+          const estado = data.estado ? " (" + data.estado + ")" : "";
+          aviso(afipFeedback, "Datos cargados desde AFIP" + estado + ". Revisá antes de guardar.", "success");
+        } catch (err) {
+          aviso(afipFeedback, "Error de red al consultar AFIP.", "danger");
+        } finally {
+          btnConsultarAfip.disabled = false;
+        }
+      });
+
+      btnGuardar.addEventListener("click", async function () {
+        if (!modalEmpresaId.value || !modalRazonSocial.value.trim()) {
+          aviso(guardarFeedback, "Completá al menos empresa y razón social.", "warning");
+          return;
+        }
+
+        const body = new URLSearchParams({
+          empresa_id: modalEmpresaId.value,
+          razon_social: modalRazonSocial.value.trim(),
+          tipo_doc: modalTipoDoc.value,
+          nro_doc: modalNroDoc.value,
+          condicion_iva: modalCondicionIva.value,
+          domicilio: modalDomicilio.value,
+          email: modalEmail.value,
+        });
+
+        btnGuardar.disabled = true;
+        try {
+          const resp = await fetch("/clientes", {
+            method: "POST",
+            headers: { Accept: "application/json" },
+            body,
+          });
+          const data = await resp.json().catch(() => null);
+
+          if (!resp.ok || !data || !data.ok) {
+            aviso(guardarFeedback, "No se pudo guardar el cliente. Revisá los datos.", "danger");
+            return;
+          }
+
+          const opcion = document.createElement("option");
+          opcion.value = data.id;
+          opcion.textContent = data.razon_social + " — " + data.nro_doc;
+          selectCliente.appendChild(opcion);
+          selectCliente.value = data.id;
+          selectCliente.dispatchEvent(new Event("change"));
+
+          modal.hide();
+          limpiarModal();
+        } catch (err) {
+          aviso(guardarFeedback, "Error de red al guardar el cliente.", "danger");
+        } finally {
+          btnGuardar.disabled = false;
+        }
+      });
+    })();
+  }
 </script>
 {% endblock %}

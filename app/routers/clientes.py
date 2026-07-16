@@ -115,6 +115,20 @@ def crear(
     )
     db.add(cliente)
     db.commit()
+
+    if "application/json" in request.headers.get("accept", ""):
+        # Alta rápida desde el modal de facturas/nueva: sin flash ni redirect,
+        # solo lo necesario para poblar el combo de clientes por JS.
+        return JSONResponse(
+            {
+                "ok": True,
+                "id": cliente.id,
+                "razon_social": cliente.razon_social,
+                "nro_doc": cliente.nro_doc,
+            },
+            status_code=201,
+        )
+
     flash(request, f"Cliente '{razon_social}' creado.", "success")
     return RedirectResponse(url="/clientes", status_code=303)
 
