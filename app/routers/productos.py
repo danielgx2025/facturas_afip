@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -61,12 +61,30 @@ def crear(
         activo=True,
     )
     db.add(producto)
+    quiere_json = "application/json" in request.headers.get("accept", "")
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        flash(request, f"Ya existe un producto con el código '{codigo}'.", "warning")
+        mensaje = f"Ya existe un producto con el código '{codigo}'."
+        if quiere_json:
+            return JSONResponse({"ok": False, "error": mensaje}, status_code=409)
+        flash(request, mensaje, "warning")
         return RedirectResponse(url="/productos/nuevo", status_code=303)
+
+    if quiere_json:
+        # Alta rápida desde el modal de facturas/nueva: sin flash ni redirect,
+        # solo lo necesario para poblar los combos de producto por JS.
+        return JSONResponse(
+            {
+                "ok": True,
+                "id": producto.id,
+                "descripcion": producto.descripcion,
+                "precio_unitario": float(producto.precio_unitario),
+                "alicuota_iva": float(producto.alicuota_iva),
+            },
+            status_code=201,
+        )
     flash(request, f"Producto '{descripcion}' creado.", "success")
     return RedirectResponse(url="/productos", status_code=303)
 
