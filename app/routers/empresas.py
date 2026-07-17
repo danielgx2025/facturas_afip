@@ -56,6 +56,13 @@ def _obtener_empresa(db: Session, empresa_id: int) -> Empresa:
     return empresa
 
 
+def _obtener_punto_venta(db: Session, empresa_id: int, pv_id: int) -> PuntoVenta:
+    pv = db.get(PuntoVenta, pv_id)
+    if pv is None or pv.empresa_id != empresa_id:
+        raise HTTPException(status_code=404, detail="Punto de venta inexistente.")
+    return pv
+
+
 @router.post("")
 def crear(
     request: Request,
@@ -157,3 +164,52 @@ def actualizar(
         return RedirectResponse(url=f"/empresas/{empresa_id}/editar", status_code=303)
     flash(request, f"Empresa '{razon_social}' actualizada.", "success")
     return RedirectResponse(url="/empresas", status_code=303)
+
+
+@router.post("/{empresa_id}/puntos-venta")
+def crear_punto_venta(
+    request: Request,
+    empresa_id: int,
+    numero: int = Form(...),
+    descripcion: str = Form(""),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    empresa = _obtener_empresa(db, empresa_id)
+    empresa.puntos_venta.append(
+        PuntoVenta(numero=numero, descripcion=descripcion.strip(), activo=True)
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        flash(request, f"La empresa ya tiene un punto de venta número {numero}.", "warning")
+        return RedirectResponse(url=f"/empresas/{empresa_id}/editar", status_code=303)
+    flash(request, f"Punto de venta {numero} agregado.", "success")
+    return RedirectResponse(url=f"/empresas/{empresa_id}/editar", status_code=303)
+
+
+@router.post("/{empresa_id}/puntos-venta/{pv_id}")
+def actualizar_punto_venta(
+    request: Request,
+    empresa_id: int,
+    pv_id: int,
+    numero: int = Form(...),
+    descripcion: str = Form(""),
+    activo: bool = Form(False),  # checkbox: si no viene marcado, es False
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    _obtener_empresa(db, empresa_id)
+    pv = _obtener_punto_venta(db, empresa_id, pv_id)
+    pv.numero = numero
+    pv.descripcion = descripcion.strip()
+    pv.activo = activo
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        flash(request, f"La empresa ya tiene un punto de venta número {numero}.", "warning")
+        return RedirectResponse(url=f"/empresas/{empresa_id}/editar", status_code=303)
+    flash(request, f"Punto de venta {numero} actualizado.", "success")
+    return RedirectResponse(url=f"/empresas/{empresa_id}/editar", status_code=303)

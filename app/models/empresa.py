@@ -37,7 +37,9 @@ class Empresa(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     puntos_venta: Mapped[list["PuntoVenta"]] = relationship(
-        back_populates="empresa", cascade="all, delete-orphan"
+        back_populates="empresa",
+        cascade="all, delete-orphan",
+        order_by="PuntoVenta.numero",
     )
 
     def __repr__(self) -> str:  # pragma: no cover

@@ -2,6 +2,7 @@
 {% block title %}Emitir comprobante — Facturación AFIP{% endblock %}
 
 {% block content %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet" />
 <h3 class="mb-3">Emitir comprobante</h3>
 
 <div class="alert alert-{{ 'danger' if is_produccion else 'warning' }}">
@@ -50,7 +51,7 @@
         </button>
         {% endif %}
       </label>
-      <select name="cliente_id" class="form-select" required>
+      <select id="cliente_id" name="cliente_id" class="form-select" required>
         {% for c in clientes %}
         <option value="{{ c.id }}">{{ c.razon_social }} — {{ c.nro_doc }}</option>
         {% endfor %}
@@ -239,6 +240,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.6.2/dist/js/tom-select.complete.min.js"></script>
 <script>
   const tbodyItems = document.querySelector("#items-table tbody");
 
@@ -256,6 +258,12 @@
   // <option>) las facturas de otros clientes.
   const selectCliente = document.querySelector('select[name="cliente_id"]');
   const selectAsociado = document.querySelector('select[name="cbte_asociado_id"]');
+
+  const tsCliente = new TomSelect(selectCliente, {
+    create: false,
+    placeholder: "Buscar cliente por razón social o documento…",
+    maxOptions: null,
+  });
 
   function filtrarAsociables() {
     const clienteId = selectCliente.value;
@@ -417,12 +425,8 @@
             return;
           }
 
-          const opcion = document.createElement("option");
-          opcion.value = data.id;
-          opcion.textContent = data.razon_social + " — " + data.nro_doc;
-          selectCliente.appendChild(opcion);
-          selectCliente.value = data.id;
-          selectCliente.dispatchEvent(new Event("change"));
+          tsCliente.addOption({ value: String(data.id), text: data.razon_social + " — " + data.nro_doc });
+          tsCliente.setValue(String(data.id));
 
           modal.hide();
           limpiarModal();
