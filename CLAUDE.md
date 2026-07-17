@@ -82,8 +82,14 @@ una **MySQL externa** (no hay servicio de DB en el compose). Lo no obvio:
   Para builds reproducibles, fijar un commit de pyafipws (`...pyafipws.git@<sha>`).
 - **TLS lo termina un proxy externo:** uvicorn corre con
   `--proxy-headers --forwarded-allow-ips "*"`. La cookie de sesión lleva `Secure`
-  en `producción` (ver `app/main.py`), así que **sin proxy HTTPS por delante no se
-  puede loguear**. El puerto se publica solo en `127.0.0.1:8000`.
+  cuando `AFIP_MODO=produccion` (`settings.session_https_only`, ver
+  `app/config.py` y `app/main.py`), así que **sin proxy HTTPS por delante no se
+  puede loguear** (el navegador descarta la cookie silenciosamente; el síntoma
+  es indistinguible de una contraseña incorrecta). El puerto se publica solo en
+  `127.0.0.1:8000`. Si el modo AFIP debe ser `produccion` (validez fiscal real)
+  pero el HTTPS del proxy todavía no está listo, `SESSION_COOKIE_SECURE=false`
+  desacopla ambas cosas como parche temporal — la sesión viaja sin cifrar hasta
+  que se resuelva el HTTPS, así que usarlo por el mínimo tiempo posible.
 - **Estado persistente = bind mounts** (no versionar): `certs/`, `pdfs/`, `logs/`
   y el host `./afip_cache` → contenedor `/app/.afip_cache`. El `APP_UID` (build
   arg, default 1000) debe coincidir con el dueño de esas carpetas en el host.

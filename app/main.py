@@ -42,7 +42,7 @@ app.add_middleware(
     secret_key=settings.secret_key,
     max_age=settings.session_max_age,
     same_site="lax",
-    https_only=settings.is_produccion,
+    https_only=settings.session_https_only,
 )
 
 # Archivos estáticos (CSS/JS/Bootstrap).

@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     # --- Seguridad web ---
     secret_key: str = "cambiar-en-produccion"
     session_max_age: int = 43200  # 12 horas
+    session_cookie_secure: bool | None = Field(default=None)  # override opcional
 
     # --- Rutas ---
     certs_dir: str = "./certs"
@@ -71,6 +72,17 @@ class Settings(BaseSettings):
     def is_produccion(self) -> bool:
         """True si el modo configurado es producción (validez fiscal real)."""
         return self.afip_modo.strip().lower() == "produccion"
+
+    @property
+    def session_https_only(self) -> bool:
+        """Si la cookie de sesión lleva el flag Secure (requiere HTTPS activo,
+        o el navegador la descarta silenciosamente). Por defecto sigue
+        is_produccion; SESSION_COOKIE_SECURE permite desacoplarlo cuando el
+        modo AFIP es 'produccion' pero todavía no hay HTTPS terminado
+        delante del proxy."""
+        if self.session_cookie_secure is not None:
+            return self.session_cookie_secure
+        return self.is_produccion
 
     @computed_field  # type: ignore[prop-decorator]
     @property
