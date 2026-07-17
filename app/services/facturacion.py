@@ -18,6 +18,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.afip import wsfe_client
@@ -25,6 +26,7 @@ from app.afip.constants import (
     COMPROBANTES_CON_ASOCIADO,
     FACTURAS,
     LETRA_COMPROBANTE,
+    NOTAS_CREDITO,
     condicion_iva_receptor_id,
     iva_id_desde_porcentaje,
 )
@@ -122,6 +124,14 @@ def emitir_factura(
     empresa = db.get(Empresa, empresa_id)
     if empresa is None:
         raise ValueError(f"Empresa {empresa_id} inexistente.")
+    punto_venta_valido = any(
+        pv.numero == punto_venta and pv.activo for pv in empresa.puntos_venta
+    )
+    if not punto_venta_valido:
+        raise ValueError(
+            f"El punto de venta {punto_venta} no está configurado o activo "
+            f"para la empresa '{empresa.razon_social}'."
+        )
     cliente = db.get(Cliente, cliente_id)
     if cliente is None:
         raise ValueError(f"Cliente {cliente_id} inexistente.")
@@ -147,6 +157,25 @@ def emitir_factura(
             raise ValueError("El comprobante asociado debe ser una factura.")
         if asociado.cliente_id != cliente_id:
             raise ValueError("El comprobante asociado pertenece a otro cliente.")
+        if tipo_cbte in NOTAS_CREDITO:
+            notas_previas = (
+                db.query(func.sum(Comprobante.importe_total))
+                .filter(
+                    Comprobante.cbte_asociado_id == asociado.id,
+                    Comprobante.tipo_cbte.in_(NOTAS_CREDITO),
+                    Comprobante.cae.isnot(None),
+                )
+                .scalar()
+            )
+            saldo_disponible = _redondear(
+                float(asociado.importe_total) - float(notas_previas or 0.0)
+            )
+            if total > saldo_disponible + 0.01:
+                raise ValueError(
+                    f"El total de la nota de crédito (${total:.2f}) supera el "
+                    f"saldo disponible del comprobante asociado "
+                    f"(${saldo_disponible:.2f})."
+                )
         asociados.append(
             CmpAsociado(
                 tipo=asociado.tipo_cbte,

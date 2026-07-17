@@ -152,10 +152,13 @@ si AFIP aprobó** → genera el PDF (fallo de PDF no invalida el CAE). Reglas cl
 Multiempresa: `Empresa` guarda `cert_path`/`key_path` **relativos a `certs/`** (la
 base solo guarda la ruta; los PEM viven en disco). Cada `Empresa` tiene uno o más
 `PuntoVenta` (`empresa.puntos_venta`, `UniqueConstraint(empresa_id, numero)`); al
-crear la empresa se le da de alta un punto de venta "Principal", y el formulario
-de emisión (`routers/facturas.py`) elige entre los puntos de venta **activos** de
-la empresa seleccionada — `emitir_factura`/`numeracion.siguiente_numero` reciben
-`punto_venta` como parámetro, nunca hardcodeado. `Comprobante` guarda CAE,
+crear la empresa se le da de alta un punto de venta "Principal", y **desde la
+pantalla de edición de empresa** (`routers/empresas.py::crear_punto_venta` /
+`actualizar_punto_venta`) se pueden agregar más o desactivarlos, sin borrarlos
+físicamente. El formulario de emisión (`routers/facturas.py`) elige entre los
+puntos de venta **activos** de la empresa seleccionada —
+`emitir_factura`/`numeracion.siguiente_numero` reciben `punto_venta` como
+parámetro, nunca hardcodeado. `Comprobante` guarda CAE,
 vencimiento, resultado, `cbte_asociado_id` (autoreferencia para NC/ND) y `fecha`
 como **string `"YYYY-MM-DD"`** (las agregaciones del dashboard agrupan por mes con
 `substr(fecha,1,7)` y filtran rangos lexicográficamente). Bajas **lógicas**:
@@ -171,7 +174,7 @@ límite superior exclusivo. Los gráficos son Chart.js por CDN con los datos
 embebidos vía `tojson` (sin endpoint JSON).
 
 ### Reportes (`app/routers/reportes.py` + `app/services/{reportes,estado_cuenta,excel_service}.py`)
-Dos reportes, cada uno con vista web + descarga en **PDF** (`pdf_service.py`) y
+Tres reportes, cada uno con vista web + descarga en **PDF** (`pdf_service.py`) y
 **XLSX** (`excel_service.py`, openpyxl):
 - **Reporte de facturas** (`/reportes/facturas`): `reportes.buscar_comprobantes`
   filtra por rango de fechas (inclusive) + cliente/empresa opcionales; incluye
@@ -182,7 +185,11 @@ Dos reportes, cada uno con vista web + descarga en **PDF** (`pdf_service.py`) y
   CAE antes del período) + movimientos del período con **saldo corriente
   acumulado** línea a línea; mismo criterio que `estadisticas.py` — solo
   comprobantes con CAE, notas de crédito restan.
-- Ambos routers reusan el patrón de `dashboard.index` para filtros opcionales
+- **Listado de clientes** (`/reportes/clientes`): `reportes.buscar_clientes`
+  filtra por texto libre (razón social o nro. de documento, `ILIKE`),
+  empresa y estado (`"activos" | "inactivos" | "todos"`, según
+  `Cliente.fecha_baja`); sin filtro de fecha.
+- Los tres routers reusan el patrón de `dashboard.index` para filtros opcionales
   (`str = ""` → `int | None` a mano, ver "Parámetros opcionales de formularios"
   más abajo).
 

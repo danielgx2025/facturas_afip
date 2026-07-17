@@ -22,7 +22,7 @@
     </div>
     <div class="col-md-2">
       <label class="form-label">Punto de venta</label>
-      <input type="number" name="punto_venta" class="form-control" value="1" min="1" required />
+      <select name="punto_venta" class="form-select" required></select>
     </div>
     <div class="col-md-3">
       <label class="form-label">Tipo de comprobante</label>
@@ -293,6 +293,26 @@
 
   selectTipo.addEventListener("change", actualizarAsociado);
   actualizarAsociado();
+
+  // Los puntos de venta activos dependen de la empresa emisora elegida:
+  // se repueblan al cambiar el combo, en vez de un número fijo tipeado a mano.
+  const puntosVentaPorEmpresa = {{ puntos_venta_por_empresa | tojson }};
+  const selectEmpresa = document.querySelector('select[name="empresa_id"]');
+  const selectPuntoVenta = document.querySelector('select[name="punto_venta"]');
+
+  function actualizarPuntosVenta() {
+    const puntos = puntosVentaPorEmpresa[selectEmpresa.value] || [];
+    selectPuntoVenta.innerHTML = puntos
+      .map((pv) => {
+        const numero = String(pv.numero).padStart(4, "0");
+        const etiqueta = pv.descripcion ? `${numero} — ${pv.descripcion}` : numero;
+        return `<option value="${pv.numero}">${etiqueta}</option>`;
+      })
+      .join("");
+  }
+
+  selectEmpresa.addEventListener("change", actualizarPuntosVenta);
+  actualizarPuntosVenta();
 
   // Clona la última fila de detalle para agregar más líneas.
   document.getElementById("add-row").addEventListener("click", function () {

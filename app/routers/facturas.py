@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import FileResponse, RedirectResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.afip.constants import (
     COMPROBANTES_CON_ASOCIADO,
@@ -55,7 +55,12 @@ def nueva_form(
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
-    empresas = db.query(Empresa).filter(Empresa.activo.is_(True)).all()
+    empresas = (
+        db.query(Empresa)
+        .filter(Empresa.activo.is_(True))
+        .options(selectinload(Empresa.puntos_venta))
+        .all()
+    )
     clientes = db.query(Cliente).filter(Cliente.fecha_baja.is_(None)).all()
     productos = db.query(Producto).filter(Producto.activo.is_(True)).all()
     # Solo facturas con CAE: son las únicas asociables a una NC/ND. El filtro
@@ -68,6 +73,16 @@ def nueva_form(
         .limit(300)
         .all()
     )
+    # Puntos de venta activos por empresa, para poblar el combo dependiente
+    # en el form (ver facturas/form.html) sin pegarle a un endpoint aparte.
+    puntos_venta_por_empresa = {
+        e.id: [
+            {"numero": pv.numero, "descripcion": pv.descripcion}
+            for pv in e.puntos_venta
+            if pv.activo
+        ]
+        for e in empresas
+    }
     return render(
         request,
         "facturas/form.html",
@@ -78,6 +93,7 @@ def nueva_form(
             "tipos": TIPOS_COMPROBANTE,
             "asociables": asociables,
             "tipos_con_asociado": sorted(COMPROBANTES_CON_ASOCIADO),
+            "puntos_venta_por_empresa": puntos_venta_por_empresa,
         },
         user=user,
     )
