@@ -20,6 +20,7 @@ from app.afip.exceptions import (
 )
 from app.auth.dependencies import get_current_user
 from app.database import get_db
+from app.logging_config import get_logger
 from app.models.cliente import Cliente
 from app.models.comprobante import Comprobante
 from app.models.empresa import Empresa
@@ -30,6 +31,7 @@ from app.services.pdf_service import generar_pdf_comprobante
 from app.web import flash, render
 
 router = APIRouter(prefix="/facturas", tags=["facturas"])
+logger = get_logger("routers.facturas")
 
 
 @router.get("")
@@ -49,12 +51,10 @@ def listar(
     )
 
 
-@router.get("/nueva")
-def nueva_form(
-    request: Request,
-    db: Session = Depends(get_db),
-    user: Usuario = Depends(get_current_user),
-):
+def _contexto_formulario(db: Session) -> dict:
+    """Arma los combos del form de emisión (empresas, clientes, productos,
+    asociables, puntos de venta). Lo usan tanto el alta (GET /nueva) como el
+    re-render tras un error de emisión (POST /facturas)."""
     empresas = (
         db.query(Empresa)
         .filter(Empresa.activo.is_(True))
@@ -83,20 +83,40 @@ def nueva_form(
         ]
         for e in empresas
     }
-    return render(
-        request,
-        "facturas/form.html",
-        {
-            "empresas": empresas,
-            "clientes": clientes,
-            "productos": productos,
-            "tipos": TIPOS_COMPROBANTE,
-            "asociables": asociables,
-            "tipos_con_asociado": sorted(COMPROBANTES_CON_ASOCIADO),
-            "puntos_venta_por_empresa": puntos_venta_por_empresa,
-        },
-        user=user,
+    return {
+        "empresas": empresas,
+        "clientes": clientes,
+        "productos": productos,
+        "tipos": TIPOS_COMPROBANTE,
+        "asociables": asociables,
+        "tipos_con_asociado": sorted(COMPROBANTES_CON_ASOCIADO),
+        "puntos_venta_por_empresa": puntos_venta_por_empresa,
+    }
+
+
+def _filas_item(
+    item_producto_id: list[int], item_precio: list[float], item_cantidad: list[float]
+) -> list[dict]:
+    """Empareja las 3 listas paralelas del form en filas, para repoblar la
+    tabla de ítems tras un error de emisión (mismo padding que el armado de
+    líneas)."""
+    precios = list(item_precio) + [0.0] * (len(item_producto_id) - len(item_precio))
+    cantidades = list(item_cantidad) + [0.0] * (
+        len(item_producto_id) - len(item_cantidad)
     )
+    return [
+        {"producto_id": p, "precio": pr, "cantidad": c}
+        for p, pr, c in zip(item_producto_id, precios, cantidades)
+    ]
+
+
+@router.get("/nueva")
+def nueva_form(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    return render(request, "facturas/form.html", _contexto_formulario(db), user=user)
 
 
 @router.post("")
@@ -115,6 +135,32 @@ def emitir(
     user: Usuario = Depends(get_current_user),
 ):
     """Construye las líneas desde los productos y emite el comprobante."""
+    asociado_id = int(cbte_asociado_id) if cbte_asociado_id.strip() else None
+
+    datos_previos = {
+        "empresa_id": empresa_id,
+        "punto_venta": punto_venta,
+        "cliente_id": cliente_id,
+        "tipo_cbte": tipo_cbte,
+        "concepto": concepto,
+        "cbte_asociado_id": asociado_id,
+        # Nombre "filas" (no "items"): en un dict, dp.items resolvería al
+        # método dict.items() vía getattr antes de caer al acceso por clave
+        # que usa Jinja, rompiendo el {% for item in dp.items %} del template.
+        "filas": _filas_item(item_producto_id, item_precio, item_cantidad),
+    }
+
+    def _reintentar(mensaje: str, categoria: str):
+        """Muestra el error sin perder lo cargado: re-renderiza el mismo form
+        con los combos frescos + los valores que el usuario había puesto."""
+        db.rollback()  # defensivo: no debería haber writes pendientes en este punto
+        flash(request, mensaje, categoria)
+        contexto = _contexto_formulario(db)
+        contexto["datos_previos"] = datos_previos
+        return render(
+            request, "facturas/form.html", contexto, user=user, status_code=422
+        )
+
     # Alinea la lista de precios con la de productos (0 = usar precio de lista).
     precios = list(item_precio) + [0.0] * (len(item_producto_id) - len(item_precio))
 
@@ -128,7 +174,9 @@ def emitir(
             continue
         # El precio del formulario manda; si quedó vacío o en 0, cae al precio
         # de lista del producto (un total 0 sería rechazado por AFIP).
-        precio_unitario = float(precio) if precio > 0 else float(producto.precio_unitario)
+        precio_unitario = (
+            float(precio) if precio > 0 else float(producto.precio_unitario)
+        )
         lineas.append(
             LineaFactura(
                 descripcion=producto.descripcion,
@@ -140,10 +188,9 @@ def emitir(
         )
 
     if not lineas:
-        flash(request, "Agregá al menos un producto con cantidad mayor a cero.", "warning")
-        return RedirectResponse(url="/facturas/nueva", status_code=303)
-
-    asociado_id = int(cbte_asociado_id) if cbte_asociado_id.strip() else None
+        return _reintentar(
+            "Agregá al menos un producto con cantidad mayor a cero.", "warning"
+        )
 
     try:
         comprobante = emitir_factura(
@@ -159,17 +206,25 @@ def emitir(
         )
     except AfipValidationError as exc:
         detalle = "; ".join(exc.errores) or str(exc)
-        flash(request, f"AFIP rechazó el comprobante: {detalle}", "danger")
-        return RedirectResponse(url="/facturas/nueva", status_code=303)
+        return _reintentar(f"AFIP rechazó el comprobante: {detalle}", "danger")
     except AfipAuthError as exc:
-        flash(request, f"Error de autenticación con AFIP: {exc}", "danger")
-        return RedirectResponse(url="/facturas/nueva", status_code=303)
+        return _reintentar(f"Error de autenticación con AFIP: {exc}", "danger")
     except AfipConnectionError as exc:
-        flash(request, f"Error de conexión con AFIP: {exc}", "danger")
-        return RedirectResponse(url="/facturas/nueva", status_code=303)
+        return _reintentar(f"Error de conexión con AFIP: {exc}", "danger")
     except ValueError as exc:
-        flash(request, str(exc), "warning")
-        return RedirectResponse(url="/facturas/nueva", status_code=303)
+        return _reintentar(str(exc), "warning")
+    except Exception:
+        logger.exception(
+            "Error inesperado al emitir comprobante (empresa=%s, cliente=%s, tipo=%s).",
+            empresa_id,
+            cliente_id,
+            tipo_cbte,
+        )
+        return _reintentar(
+            "Ocurrió un error inesperado al emitir el comprobante. "
+            "Si el problema persiste, contactá al administrador.",
+            "danger",
+        )
 
     flash(
         request,
