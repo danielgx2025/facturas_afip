@@ -23,7 +23,13 @@ def listar(
     user: Usuario = Depends(get_current_user),
 ):
     productos = db.query(Producto).all()
-    return render(request, "productos/list.html", {"productos": productos}, user=user)
+    cantidad_activos = sum(1 for p in productos if p.activo)
+    return render(
+        request,
+        "productos/list.html",
+        {"productos": productos, "cantidad_activos": cantidad_activos},
+        user=user,
+    )
 
 
 @router.get("/nuevo")
@@ -89,6 +95,51 @@ def crear(
     return RedirectResponse(url="/productos", status_code=303)
 
 
+LIMITE_INFERIOR_PORCENTAJE = -100  # a -100% o menos, el precio queda en 0 o negativo
+
+
+@router.post("/aumentar-precios")
+def aumentar_precios(
+    request: Request,
+    porcentaje: float = Form(...),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Aplica un aumento (o disminución, si es negativo) porcentual al precio
+    de todos los productos activos."""
+    if porcentaje == 0:
+        flash(
+            request,
+            "El porcentaje ingresado es 0%; no se realizó ningún cambio.",
+            "warning",
+        )
+        return RedirectResponse(url="/productos", status_code=303)
+
+    if porcentaje <= LIMITE_INFERIOR_PORCENTAJE:
+        flash(
+            request,
+            f"El porcentaje no puede ser menor o igual a {LIMITE_INFERIOR_PORCENTAJE}% "
+            "(dejaría precios en cero o negativos).",
+            "warning",
+        )
+        return RedirectResponse(url="/productos", status_code=303)
+
+    productos_activos = db.query(Producto).filter(Producto.activo.is_(True)).all()
+    factor = 1 + porcentaje / 100
+    for producto in productos_activos:
+        producto.precio_unitario = round(float(producto.precio_unitario) * factor, 2)
+    db.commit()
+
+    cantidad = len(productos_activos)
+    tipo = "un aumento" if porcentaje > 0 else "una disminución"
+    flash(
+        request,
+        f"Se actualizaron {cantidad} productos con {tipo} del {abs(porcentaje):g}%.",
+        "success",
+    )
+    return RedirectResponse(url="/productos", status_code=303)
+
+
 @router.get("/{producto_id}/editar")
 def editar_form(
     request: Request,
@@ -126,8 +177,6 @@ def actualizar(
     except IntegrityError:
         db.rollback()
         flash(request, f"Ya existe otro producto con el código '{codigo}'.", "warning")
-        return RedirectResponse(
-            url=f"/productos/{producto_id}/editar", status_code=303
-        )
+        return RedirectResponse(url=f"/productos/{producto_id}/editar", status_code=303)
     flash(request, f"Producto '{descripcion}' actualizado.", "success")
     return RedirectResponse(url="/productos", status_code=303)

@@ -4,7 +4,13 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3>Productos</h3>
-  <a href="/productos/nuevo" class="btn btn-success">+ Nuevo producto</a>
+  <div class="d-flex gap-2">
+    <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal"
+            data-bs-target="#modalAumentarPrecios">
+      Aumentar precios
+    </button>
+    <a href="/productos/nuevo" class="btn btn-success">+ Nuevo producto</a>
+  </div>
 </div>
 
 <table class="table table-striped table-hover align-middle">
@@ -43,4 +49,48 @@
     {% endfor %}
   </tbody>
 </table>
+
+<div class="modal fade" id="modalAumentarPrecios" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" action="/productos/aumentar-precios">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Aumentar / disminuir precios</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p>
+            Esta acción actualiza el <strong>precio (neto)</strong> de los
+            <strong>{{ cantidad_activos }} productos activos</strong> actualmente cargados.
+            Los productos inactivos no se modifican. Esta acción no se puede deshacer.
+          </p>
+          <label class="form-label">Porcentaje (usar negativo para disminuir)</label>
+          <div class="input-group">
+            <input type="number" step="0.01" name="porcentaje" id="input-porcentaje"
+                   class="form-control" required autofocus />
+            <span class="input-group-text">%</span>
+          </div>
+          <div class="form-text" id="preview-porcentaje"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Confirmar</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  document.getElementById("input-porcentaje").addEventListener("input", function () {
+    const valor = parseFloat(this.value);
+    const preview = document.getElementById("preview-porcentaje");
+    if (isNaN(valor) || valor === 0) {
+      preview.textContent = "";
+    } else {
+      const tipo = valor > 0 ? "un aumento" : "una disminución";
+      preview.textContent = `Se aplicará ${tipo} del ${Math.abs(valor)}% a {{ cantidad_activos }} productos.`;
+    }
+  });
+</script>
 {% endblock %}
