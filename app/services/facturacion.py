@@ -145,6 +145,10 @@ def emitir_factura(
 
     # Comprobante asociado (notas de crédito/débito).
     asociados: list[CmpAsociado] = []
+    if tipo_cbte in COMPROBANTES_CON_ASOCIADO and cbte_asociado_id is None:
+        raise ValueError(
+            "Las notas de crédito/débito requieren un comprobante asociado."
+        )
     if cbte_asociado_id is not None:
         if tipo_cbte not in COMPROBANTES_CON_ASOCIADO:
             raise ValueError(

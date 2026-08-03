@@ -56,9 +56,9 @@ integrando los web services WSAA (autenticación), WSFEv1 (CAE) y el Padrón A5
 .\.venv\Scripts\python.exe -m black .
 ```
 
-> `ruff`, `black` y `pytest` figuran en `requirements.txt` pero pueden faltar en
-> el venv actual; si los comandos fallan con "No module named …", instalarlos:
-> `pip install ruff black pytest`.
+> `ruff` y `black` figuran en `requirements.txt`; `pytest` no — instalarlo
+> aparte si hace falta correr `tests/test_afip_homologacion.py`:
+> `pip install pytest`.
 
 ## Migraciones de esquema (no hay Alembic)
 
@@ -115,7 +115,7 @@ resto del código nunca hardcodea URLs ni alterna entornos manualmente. `setting
 también expone `database_url`, `certs_path`, `pdfs_path`, etc.
 
 ### Capa AFIP aislada (`app/afip/`) — el núcleo
-- `wsaa_client.autenticar(cuit, cert, key, servicio="wsfe")` devuelve un
+- `wsaa_client.autenticar(cuit, cert_rel, key_rel, servicio="wsfe")` devuelve un
   `TicketAcceso(token, sign, cuit)`. El Ticket de Acceso lo **cachea pyafipws en
   `.afip_cache/`** (válido ~12 h), un TA **por servicio**; no se re-autentica por
   operación.
@@ -144,8 +144,9 @@ cacheado) → obtiene número → solicita CAE → **persiste el Comprobante + �
 si AFIP aprobó** → genera el PDF (fallo de PDF no invalida el CAE). Reglas clave:
 - **Factura C** (Monotributo, `LETRA_COMPROBANTE=="C"`): no discrimina IVA
   (`ivas=[]`, `imp_neto == total`).
-- **Notas de crédito/débito**: requieren `cbte_asociado_id`; se traduce a
-  `AgregarCmpAsociado`.
+- **Notas de crédito/débito**: requieren `cbte_asociado_id` (se valida en
+  `emitir_factura`, antes de autenticar); arma un `CmpAsociado` que se traduce
+  a `AgregarCmpAsoc`.
 - **RG 5616 (obligatorio):** `condicion_iva_receptor_id` se deriva del texto
   `Cliente.condicion_iva` y se envía en `CrearFactura`. Si falta, AFIP rechaza con
   la observación **10246**.
@@ -192,9 +193,11 @@ Tres reportes, cada uno con vista web + descarga en **PDF** (`pdf_service.py`) y
   acumulado** línea a línea; mismo criterio que `estadisticas.py` — solo
   comprobantes con CAE, notas de crédito restan.
 - **Listado de clientes** (`/reportes/clientes`): `reportes.buscar_clientes`
-  filtra por texto libre (razón social o nro. de documento, `ILIKE`),
-  empresa y estado (`"activos" | "inactivos" | "todos"`, según
-  `Cliente.fecha_baja`); sin filtro de fecha.
+  filtra por texto libre (razón social o nro. de documento, `.ilike()` de
+  SQLAlchemy — en MySQL compila a `lower(col) LIKE lower(patrón)`, no al
+  operador `ILIKE` de Postgres), empresa y estado
+  (`"activos" | "inactivos" | "todos"`, según `Cliente.fecha_baja`); sin
+  filtro de fecha.
 - Los tres routers reusan el patrón de `dashboard.index` para filtros opcionales
   (`str = ""` → `int | None` a mano, ver "Parámetros opcionales de formularios"
   más abajo).
